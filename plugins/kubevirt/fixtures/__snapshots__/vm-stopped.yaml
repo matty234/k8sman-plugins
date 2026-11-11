@@ -131,4 +131,25 @@ actions:
     label: Start
     patchType: merge
     type: patch
+  - body:
+      apiVersion: snapshot.kubevirt.io/v1beta1
+      kind: VirtualMachineSnapshot
+      metadata:
+        name: kv-smoketest-2026-1-1
+      spec:
+        source:
+          apiGroup: kubevirt.io
+          kind: VirtualMachine
+          name: kv-smoketest
+    dangerous: false
+    icon: backup
+    id: snapshot
+    inputs:
+      - default: kv-smoketest-2026-1-1
+        label: Snapshot name
+        name: name
+        type: string
+        validateMessage: Lower-case letters, digits and dashes.
+    label: Snapshot…
+    type: create
 status: 'VMs: 1 · running: 0 · paused: 0 · error: 0'

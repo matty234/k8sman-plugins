@@ -165,3 +165,11 @@ panel:
           type: fields
       icon: speed
       title: Usage
+actions:
+  - body: {}
+    dangerous: false
+    icon: timer
+    id: pause
+    label: Pause
+    request: PUT subresources.kubevirt.io/v1 virtualmachineinstances/pause
+    type: subresource

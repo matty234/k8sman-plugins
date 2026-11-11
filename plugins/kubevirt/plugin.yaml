@@ -10,10 +10,10 @@ apiVersion: k8sman.dev/v1
 id: kubevirt
 name: KubeVirt
 version: 0.1.0
-description: Virtual machines on Kubernetes. Status, disks, networks, instances, migrations, DataVolumes, snapshots and instance types, with start/stop, virtctl actions, templates and alerts.
+description: Virtual machines on Kubernetes. Status, disks, networks, instances, migrations, DataVolumes, snapshots and instance types, with power, migration and snapshot actions, templates and alerts.
 authors: [k8sman community]
 homepage: https://kubevirt.io
-minAppVersion: "0.2.19"
+minAppVersion: "0.2.20"
 
 permissions:
   read:
@@ -30,6 +30,13 @@ permissions:
     - /Pod
   patch:
     - kubevirt.io/VirtualMachine
+  subresources:
+    - kubevirt.io/VirtualMachine/restart
+    - kubevirt.io/VirtualMachine/migrate
+    - kubevirt.io/VirtualMachineInstance/pause
+    - kubevirt.io/VirtualMachineInstance/unpause
+  create:
+    - snapshot.kubevirt.io/VirtualMachineSnapshot
   commands: [virtctl]
   prometheus: true
 
@@ -377,53 +384,45 @@ kinds:
           type: merge
           body: 'object.spec.?running.hasValue() ? dyn({"spec": {"running": false}}) : dyn({"spec": {"runStrategy": "Halted"}})'
 
-      # ---- virtctl: a stopgap until these are native subresource actions. ----
-      # Each needs virtctl on PATH; $CONTEXT picks the cluster, and the
-      # KUBECONFIG of the app's local shells is inherited.
-      - id: virtctl-restart
-        label: Restart (virtctl)
+      # Native: KubeVirt's subresource API and a snapshot object (k8sman 0.2.20).
+      - id: restart
+        label: Restart
         icon: restart_alt
         dangerous: true
+        message: The VirtualMachineInstance is deleted and started again.
         when: 'variables.status == "Running"'
-        shell:
-          command: virtctl
-          args: [restart, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
-          background: true
-      - id: virtctl-pause
-        label: Pause (virtctl)
-        icon: timer
-        dangerous: false
-        when: 'variables.status == "Running"'
-        shell:
-          command: virtctl
-          args: [pause, vm, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
-          background: true
-      - id: virtctl-unpause
-        label: Unpause (virtctl)
-        icon: play_arrow
-        dangerous: false
-        when: 'variables.status == "Paused"'
-        shell:
-          command: virtctl
-          args: [unpause, vm, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
-          background: true
-      - id: virtctl-migrate
-        label: Live migrate (virtctl)
+        subresource:
+          name: restart
+          group: subresources.kubevirt.io
+          version: v1
+      - id: migrate
+        label: Live migrate
         icon: sync_alt
         dangerous: false
         when: 'variables.status == "Running" && conditionTrue(object, "LiveMigratable")'
-        shell:
-          command: virtctl
-          args: [migrate, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
-          background: true
-      - id: virtctl-console
-        label: Serial console (virtctl)
-        icon: terminal
+        subresource:
+          name: migrate
+          group: subresources.kubevirt.io
+          version: v1
+      - id: snapshot
+        label: Snapshot…
+        icon: backup
         dangerous: false
-        when: 'variables.status == "Running"'
-        shell:
-          command: virtctl
-          args: [console, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+        inputs:
+          - name: name
+            label: Snapshot name
+            default: object.metadata.name + "-" + string(now.getFullYear()) + "-" + string(now.getMonth() + 1) + "-" + string(now.getDate())
+            validate: input.name.matches("^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
+            validateMessage: Lower-case letters, digits and dashes.
+        create:
+          kind: snapshot.kubevirt.io/VirtualMachineSnapshot
+          body: >-
+            {"apiVersion": "snapshot.kubevirt.io/v1beta1", "kind": "VirtualMachineSnapshot",
+             "metadata": {"name": input.name},
+             "spec": {"source": {"apiGroup": "kubevirt.io", "kind": "VirtualMachine", "name": object.metadata.name}}}
+
+      # The serial console is built into k8sman (Serial console in the inspector).
+      # VNC needs a local viewer: virtctl launches one (virtctl must be on PATH).
       - id: virtctl-vnc
         label: VNC (virtctl)
         icon: public
@@ -575,6 +574,25 @@ kinds:
   # ------------------------------------------------------- VirtualMachineInstance
   kubevirt.io/VirtualMachineInstance:
     icon: memory
+    actions:
+      - id: pause
+        label: Pause
+        icon: timer
+        dangerous: false
+        when: 'object.?status.?phase.orValue("") == "Running" && !conditionTrue(object, "Paused")'
+        subresource:
+          name: pause
+          group: subresources.kubevirt.io
+          version: v1
+      - id: unpause
+        label: Unpause
+        icon: play_arrow
+        dangerous: false
+        when: 'conditionTrue(object, "Paused")'
+        subresource:
+          name: unpause
+          group: subresources.kubevirt.io
+          version: v1
     variables:
       phase: object.?status.?phase.orValue("")
       ready: conditionTrue(object, "Ready")

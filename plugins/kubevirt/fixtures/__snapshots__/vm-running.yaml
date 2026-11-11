@@ -263,62 +263,42 @@ actions:
     message: The guest is powered off (the VirtualMachineInstance is deleted) and the VM keeps its disks.
     patchType: merge
     type: patch
-  - argv:
-      - virtctl
-      - restart
-      - --context
-      - demo
-      - -n
-      - bioinformatics
-      - kv-ubuntu-test
-    background: true
+  - body: {}
     dangerous: true
     icon: restart_alt
-    id: virtctl-restart
-    label: Restart (virtctl)
-    type: shell
-  - argv:
-      - virtctl
-      - pause
-      - vm
-      - --context
-      - demo
-      - -n
-      - bioinformatics
-      - kv-ubuntu-test
-    background: true
-    dangerous: false
-    icon: timer
-    id: virtctl-pause
-    label: Pause (virtctl)
-    type: shell
-  - argv:
-      - virtctl
-      - migrate
-      - --context
-      - demo
-      - -n
-      - bioinformatics
-      - kv-ubuntu-test
-    background: true
+    id: restart
+    label: Restart
+    message: The VirtualMachineInstance is deleted and started again.
+    request: PUT subresources.kubevirt.io/v1 virtualmachines/restart
+    type: subresource
+  - body: {}
     dangerous: false
     icon: sync_alt
-    id: virtctl-migrate
-    label: Live migrate (virtctl)
-    type: shell
-  - argv:
-      - virtctl
-      - console
-      - --context
-      - demo
-      - -n
-      - bioinformatics
-      - kv-ubuntu-test
+    id: migrate
+    label: Live migrate
+    request: PUT subresources.kubevirt.io/v1 virtualmachines/migrate
+    type: subresource
+  - body:
+      apiVersion: snapshot.kubevirt.io/v1beta1
+      kind: VirtualMachineSnapshot
+      metadata:
+        name: kv-ubuntu-test-2026-1-1
+      spec:
+        source:
+          apiGroup: kubevirt.io
+          kind: VirtualMachine
+          name: kv-ubuntu-test
     dangerous: false
-    icon: terminal
-    id: virtctl-console
-    label: Serial console (virtctl)
-    type: shell
+    icon: backup
+    id: snapshot
+    inputs:
+      - default: kv-ubuntu-test-2026-1-1
+        label: Snapshot name
+        name: name
+        type: string
+        validateMessage: Lower-case letters, digits and dashes.
+    label: Snapshot…
+    type: create
   - argv:
       - virtctl
       - vnc

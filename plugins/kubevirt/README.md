@@ -28,17 +28,21 @@ objects around them.
 - **Actions** on a VirtualMachine: **Start** and **Stop** patch
   `spec.runStrategy` (`Always` / `Halted`, or `spec.running` for a VM that
   still uses it), after a dry run you confirm. Stop is marked dangerous.
-- **virtctl actions** (Restart, Pause, Unpause, Live migrate, Serial console,
-  VNC) run `virtctl` on your computer with `--context` set to the cluster on
-  screen, so **[`virtctl`](https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/)
-  must be installed and on your PATH**. They are a stopgap until the app
-  offers these through the API. SSH is not included: shell actions can't ask
-  for a user name.
+- **Restart** and **Live migrate** on a VirtualMachine, and **Pause** /
+  **Unpause** on a VirtualMachineInstance, call KubeVirt's subresource API
+  (`subresources.kubevirt.io`) with your credentials. **Snapshot…** creates a
+  `VirtualMachineSnapshot` of the VM after a dry run. The serial console is
+  built into k8sman (**Serial console** on a running VM or VMI).
+- **VNC** runs `virtctl vnc` on your computer, which opens a local viewer, so
+  it needs [`virtctl`](https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/)
+  on your PATH.
 - **Templates** for the New Resource editor: a VM from a containerDisk, a VM
   with a DataVolumeTemplate that imports a cloud image, DataVolumes (HTTP
   import, blank), a snapshot, a restore, an instance type and a migration.
 - **Usage** needs the Prometheus integration scraping KubeVirt
   (`kubevirt_vmi_*` metrics, labelled `name` and `namespace`).
 
-Permissions: reads the kinds above and Pods, patches `VirtualMachine`, runs
-`virtctl`, and queries Prometheus. Needs k8sman 0.2.19 or later.
+Permissions: reads the kinds above and Pods, patches `VirtualMachine`, calls
+the `restart`, `migrate`, `pause` and `unpause` subresources, creates
+`VirtualMachineSnapshot`s, runs `virtctl` (VNC only), and queries Prometheus.
+Needs k8sman 0.2.20 or later.
