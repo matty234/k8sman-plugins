@@ -1,0 +1,489 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
+# External Secrets Operator (external-secrets.io): ExternalSecrets,
+# ClusterExternalSecrets, SecretStores, ClusterSecretStores and PushSecrets.
+# Up to k8sman 0.2.16 it was bundled with the app; it keeps its id, so
+# settings, the on/off switch and consent carry over. v1 and v1beta1
+# objects share every field read here.
+# Without a cluster: k8sman-server plugin test plugins/external-secrets
+apiVersion: k8sman.dev/v1
+id: external-secrets
+name: External Secrets
+version: 1.1.0
+description: ExternalSecrets, secret stores and PushSecrets (External Secrets Operator), with sync status and a refresh action.
+authors: [k8sman]
+homepage: https://external-secrets.io
+minAppVersion: "0.2.17"
+
+permissions:
+  read:
+    - external-secrets.io/ExternalSecret
+    - external-secrets.io/ClusterExternalSecret
+    - external-secrets.io/SecretStore
+    - external-secrets.io/ClusterSecretStore
+    - external-secrets.io/PushSecret
+    - /Secret                 # the target's keys only: plugins never see Secret values
+  patch:                      # the force-sync annotation ("Refresh now")
+    - external-secrets.io/ExternalSecret
+    - external-secrets.io/PushSecret
+
+nav:
+  title: External Secrets
+  kinds:
+    - external-secrets.io/ExternalSecret
+    - external-secrets.io/ClusterExternalSecret
+    - external-secrets.io/SecretStore
+    - external-secrets.io/ClusterSecretStore
+    - external-secrets.io/PushSecret
+
+kinds:
+  external-secrets.io/ExternalSecret:
+    icon: key
+    variables:
+      # The Ready condition (optional), its reason ("SecretSynced",
+      # "SecretSyncedError", …; "Unknown" before the operator reports) and
+      # message. Every ESO kind below repeats these four.
+      ready: condition(object, "Ready")
+      reason: 'variables.ready.hasValue() ? string(variables.ready.value().?reason.orValue(variables.ready.value().status)) : "Unknown"'
+      readyMessage: 'variables.ready.hasValue() ? string(variables.ready.value().?message.orValue("")) : ""'
+      readyText: 'variables.readyMessage == "" ? variables.reason : variables.reason + ": " + variables.readyMessage'
+      storeKind: string(object.spec.?secretStoreRef.?kind.orValue("SecretStore"))
+      storeName: string(object.spec.?secretStoreRef.?name.orValue(""))
+      target: string(object.spec.?target.?name.orValue(object.metadata.name))
+      refresh: >-
+        object.spec.?refreshPolicy.orValue("Periodic") != "Periodic" ? string(object.spec.refreshPolicy)
+          : string(object.spec.?refreshInterval.orValue("1h"))
+      # The ClusterExternalSecret that made this one, from ownerReferences.
+      ownerCES: >-
+        object.metadata.?ownerReferences.orValue([]).exists(o, o.kind == "ClusterExternalSecret")
+          ? string(object.metadata.ownerReferences.filter(o, o.kind == "ClusterExternalSecret")[0].name) : ""
+      # Ready is False (SecretSyncedError, …), and since when.
+      notSynced: variables.ready.hasValue() && variables.ready.value().status == "False"
+      failingSince: 'variables.notSynced ? string(variables.ready.value().?lastTransitionTime.orValue("")) : ""'
+      failingLong: variables.failingSince != "" && age(variables.failingSince) >= duration("24h")
+      # Panels only (they read related).
+      store: related.?store.or(related.?clusterStore)
+
+    related:
+      target:                 # the target Secret: keys only, never values
+        kind: /Secret
+        name: variables.target
+      store:
+        kind: external-secrets.io/SecretStore
+        when: variables.storeKind == "SecretStore"
+        name: variables.storeName
+      clusterStore:
+        kind: external-secrets.io/ClusterSecretStore
+        when: variables.storeKind == "ClusterSecretStore"
+        name: variables.storeName
+      owner:
+        kind: external-secrets.io/ClusterExternalSecret
+        when: variables.ownerCES != ""
+        name: variables.ownerCES
+
+    # The CRD's printer columns that ours repeat (its Status and Ready use
+    # JSONPath filters, which the table skips anyway). Store replaces the
+    # printer column of that name in place.
+    hideColumns: [Refresh Interval, Ready]
+    columns:
+      - name: Store
+        value: variables.storeKind + "/" + variables.storeName
+      - name: Refresh
+        value: variables.refresh
+      - name: Status
+        type: status
+        description: The Ready condition's reason
+        value: variables.reason
+      - name: Last Sync
+        type: age
+        value: object.?status.?refreshTime
+      - name: Target
+        value: variables.target
+
+    # The plugin's sections are the whole panel: no generic Health,
+    # Conditions, Spec and Status after them (the YAML tab has it all).
+    panel:
+      generic: replace
+      sections:
+        - title: Sync status
+          icon: sync
+          # The Ready state in the header: green when Ready, amber while
+          # it is on its way, red when it failed.
+          badge: &readyBadge
+            text: variables.reason
+            severity: >-
+              !variables.ready.hasValue() ? "neutral" :
+              variables.ready.value().status == "True" ? "ok" :
+              variables.reason.lowerAscii() in ["pending", "progressing", "unknown", "waiting"] ? "warning" : "error"
+          blocks:
+            - &notReconciled
+              type: message
+              severity: info
+              when: '!variables.ready.hasValue()'
+              text: '"No Ready condition yet: the operator has not reconciled this object."'
+            # Not ready: a callout titled with the reason, the message under it.
+            - &notReadyWarning
+              type: message
+              severity: warning
+              when: >-
+                variables.ready.hasValue() && variables.ready.value().status != "True" &&
+                variables.reason.lowerAscii() in ["pending", "progressing", "unknown", "waiting"]
+              title: variables.reason
+              text: variables.readyMessage
+            - &notReadyError
+              type: message
+              severity: error
+              when: >-
+                variables.ready.hasValue() && variables.ready.value().status != "True" &&
+                !(variables.reason.lowerAscii() in ["pending", "progressing", "unknown", "waiting"])
+              title: variables.reason
+              text: variables.readyMessage
+            - &readyMessage
+              type: message
+              severity: info
+              when: variables.ready.hasValue() && variables.ready.value().status == "True" && variables.readyMessage != ""
+              text: variables.readyMessage
+            - type: fields
+              items:
+                - label: Last refresh
+                  type: age
+                  value: object.?status.?refreshTime
+                - label: Refresh interval
+                  value: variables.refresh
+                - label: Synced version
+                  value: object.?status.?syncedResourceVersion
+                  mono: true
+        - title: Store and target
+          icon: link
+          blocks:
+            - type: fields
+              items:
+                - label: Store
+                  when: variables.storeName != ""
+                  value: variables.storeKind + "/" + variables.storeName
+                  link: ref("external-secrets.io", variables.storeKind, variables.storeName)
+                - label: Store status
+                  type: status
+                  when: variables.storeName != ""
+                  value: >-
+                    !variables.store.hasValue() ? "Not found" :
+                    string(condition(variables.store.value(), "Ready").?reason.orValue("Unknown"))
+                  severity: >-
+                    !variables.store.hasValue() ? "error" :
+                    conditionTrue(variables.store.value(), "Ready") ? "ok" :
+                    condition(variables.store.value(), "Ready").hasValue() ? "error" : "neutral"
+                - label: Created by
+                  when: variables.ownerCES != ""
+                  value: '"ClusterExternalSecret/" + variables.ownerCES'
+                  link: ref("external-secrets.io", "ClusterExternalSecret", variables.ownerCES)
+                - label: Target Secret
+                  value: '"Secret/" + variables.target'
+                  link: ref("", "Secret", variables.target)
+            - type: chips
+              items: >-
+                ["create: " + string(object.spec.?target.?creationPolicy.orValue("Owner")),
+                 "delete: " + string(object.spec.?target.?deletionPolicy.orValue("Retain"))]
+            - type: message
+              severity: error
+              when: '!has(related.target)'
+              text: '"The target Secret does not exist yet."'
+        - title: Target Secret keys
+          icon: key
+          when: has(related.target)
+          summary: string(size(related.target.?data.orValue({})))
+          blocks:
+            - type: chips              # keys only: plugins never see Secret values
+              items: related.target.?data.orValue({}).map(k, k).sort()
+              empty: No keys.
+        - title: Data mapping
+          icon: data_object
+          when: size(object.spec.?data.orValue([])) + size(object.spec.?dataFrom.orValue([])) > 0
+          summary: string(size(object.spec.?data.orValue([])) + size(object.spec.?dataFrom.orValue([])))
+          blocks:
+            - type: table
+              when: size(object.spec.?data.orValue([])) > 0
+              rows: object.spec.data
+              limit: 50
+              columns:
+                - name: Secret key
+                  value: item.?secretKey.orValue("")
+                  mono: true
+                - name: Remote key
+                  value: item.?remoteRef.?key.orValue("")
+                  mono: true
+                - name: Property
+                  value: item.?remoteRef.?property
+                  mono: true
+                - name: Version
+                  value: item.?remoteRef.?version
+                  mono: true
+            - type: table
+              when: size(object.spec.?dataFrom.orValue([])) > 0
+              rows: object.spec.dataFrom
+              columns:
+                # One dataFrom entry on a line: extract, find, rewrite, a
+                # generator or another store.
+                - name: dataFrom
+                  mono: true
+                  value: >-
+                    ((has(item.extract) ? ["extract " + string(item.extract.?key.orValue(""))
+                        + (has(item.extract.property) ? " · " + string(item.extract.property) : "")
+                        + (has(item.extract.version) ? " @ " + string(item.extract.version) : "")] : [])
+                    + (has(item.find) ? ["find " + (
+                          (has(item.find.name) && has(item.find.name.regexp) ? ["name ~ " + string(item.find.name.regexp)] : [])
+                        + (has(item.find.path) ? ["path " + string(item.find.path)] : [])
+                        + (size(item.find.?tags.orValue({})) > 0
+                            ? ["tags " + item.find.tags.map(k, string(k) + "=" + string(item.find.tags[k])).sort().join(",")] : [])
+                        ).join(" · ")] : [])
+                    + item.?rewrite.orValue([]).map(r, has(r.regexp)
+                        ? "rewrite " + string(r.regexp.source) + " → " + string(r.regexp.target)
+                        : "rewrite " + r.map(k, string(k)).sort().join(","))
+                    + (has(item.sourceRef) && has(item.sourceRef.generatorRef)
+                        ? ["generator " + string(item.sourceRef.generatorRef.kind) + "/" + string(item.sourceRef.generatorRef.name)] : [])
+                    + (has(item.sourceRef) && has(item.sourceRef.storeRef)
+                        ? ["store " + string(item.sourceRef.storeRef.?kind.orValue("SecretStore")) + "/" + string(item.sourceRef.storeRef.name)] : [])
+                    ).join("  |  ")
+        - title: Template
+          icon: description
+          collapsed: true
+          when: size(object.spec.?target.?template.orValue({})) > 0
+          blocks:
+            - type: json
+              value: object.spec.target.template
+
+    actions:
+      - &refresh
+        id: refresh
+        label: Refresh now
+        icon: sync
+        dangerous: false
+        message: Sets the force-sync annotation, so the operator reads the provider again now.
+        patch:
+          type: merge
+          body: '{"metadata": {"annotations": {"force-sync": string(int(now))}}}'
+
+    # On the Overview (under Plugins) and in the dock's Issues tab. A
+    # failure older than a day is critical: by then it isn't a blip.
+    alerts:
+      - id: not-synced
+        label: ExternalSecrets not synced
+        severity: warning
+        when: variables.notSynced && !variables.failingLong
+        message: variables.readyText
+        since: 'variables.failingSince != "" ? dyn(variables.failingSince) : dyn(null)'
+      - id: not-synced-day
+        label: ExternalSecrets not synced for over a day
+        severity: critical
+        when: variables.failingLong
+        message: '"Failing for " + humanDuration(age(variables.failingSince)) + ": " + variables.readyText'
+        since: variables.failingSince
+
+    # Settings ▸ Integrations: "ExternalSecrets: 12 · not synced: 2".
+    status:
+      label: ExternalSecrets
+      counts:
+        - label: not synced
+          severity: warning
+          when: variables.notSynced
+
+  external-secrets.io/ClusterExternalSecret:
+    icon: vpn_key
+    variables:
+      ready: condition(object, "Ready")
+      reason: 'variables.ready.hasValue() ? string(variables.ready.value().?reason.orValue(variables.ready.value().status)) : "Unknown"'
+      readyMessage: 'variables.ready.hasValue() ? string(variables.ready.value().?message.orValue("")) : ""'
+      readyText: 'variables.readyMessage == "" ? variables.reason : variables.reason + ": " + variables.readyMessage'
+      storeKind: string(object.spec.?externalSecretSpec.?secretStoreRef.?kind.orValue("SecretStore"))
+      storeName: string(object.spec.?externalSecretSpec.?secretStoreRef.?name.orValue(""))
+      # namespaceSelector and namespaceSelectors, each as "k=v, key In (a,b)".
+      selectors: >-
+        ((size(object.spec.?namespaceSelector.orValue({})) > 0 ? [object.spec.namespaceSelector] : [])
+          + object.spec.?namespaceSelectors.orValue([]))
+        .map(s, (s.?matchLabels.orValue({}).map(k, string(k) + "=" + string(s.matchLabels[k])).sort()
+            + s.?matchExpressions.orValue([]).map(e, string(e.key) + " " + string(e.operator)
+                + " (" + e.?values.orValue([]).map(v, string(v)).join(",") + ")")).join(", "))
+        .map(x, x == "" ? "(all namespaces)" : x)
+      namespaces: object.spec.?namespaces.orValue([]).map(n, string(n))
+    hideColumns: [Store, Refresh Interval, Ready]
+    columns:
+      - name: External Secret
+        value: object.spec.?externalSecretName.orValue(object.metadata.name)
+      - name: Namespaces
+        type: number
+        value: size(object.?status.?provisionedNamespaces.orValue([]))
+      - name: Failed
+        type: number
+        value: size(object.?status.?failedNamespaces.orValue([]))
+      - name: Refresh
+        value: object.spec.?refreshTime.orValue(object.spec.?externalSecretSpec.?refreshInterval.orValue("1h"))
+      - name: Status
+        type: status
+        value: variables.reason
+    panel:
+      generic: replace
+      sections:
+        - title: Cluster external secret
+          icon: hub
+          badge: *readyBadge
+          blocks:
+            - *notReconciled
+            - *notReadyWarning
+            - *notReadyError
+            - *readyMessage
+            - type: fields
+              items:
+                - label: Secret name
+                  value: object.spec.?externalSecretName
+                - label: Store
+                  when: variables.storeName != ""
+                  value: variables.storeKind + "/" + variables.storeName
+                  link: ref("external-secrets.io", variables.storeKind, variables.storeName)
+                - label: Refresh interval
+                  value: object.spec.?externalSecretSpec.?refreshInterval
+        - title: Namespace selection
+          icon: label
+          blocks:
+            - type: message
+              severity: info
+              when: size(variables.selectors) == 0 && size(variables.namespaces) == 0
+              text: '"No namespaceSelector or namespaces set"'
+            - type: table
+              when: size(variables.selectors) > 0
+              rows: variables.selectors
+              columns:
+                - name: Selector
+                  value: item
+                  mono: true
+            - type: chips
+              when: size(variables.namespaces) > 0
+              items: variables.namespaces
+        - title: Provisioned namespaces
+          summary: string(size(object.?status.?provisionedNamespaces.orValue([])))
+          icon: check_circle
+          blocks:
+            - type: chips
+              items: object.?status.?provisionedNamespaces.orValue([])
+              empty: None
+        - title: Failed namespaces
+          icon: error
+          when: size(object.?status.?failedNamespaces.orValue([])) > 0
+          summary: string(size(object.status.failedNamespaces))
+          blocks:
+            - type: table
+              rows: object.status.failedNamespaces
+              columns:
+                - name: Namespace
+                  value: item.?namespace.orValue("")
+                - name: Reason
+                  value: item.?reason.orValue("")
+
+  # ClusterSecretStore shares all of this but its icon (anchors per field:
+  # merge keys aren't supported).
+  external-secrets.io/SecretStore:
+    icon: storage
+    variables: &storeVariables
+      ready: condition(object, "Ready")
+      reason: 'variables.ready.hasValue() ? string(variables.ready.value().?reason.orValue(variables.ready.value().status)) : "Unknown"'
+      readyMessage: 'variables.ready.hasValue() ? string(variables.ready.value().?message.orValue("")) : ""'
+      readyText: 'variables.readyMessage == "" ? variables.reason : variables.reason + ": " + variables.readyMessage'
+      # The provider's key (aws, vault, gcpsm, …); a store has one.
+      providers: object.spec.?provider.orValue({}).map(k, string(k)).sort()
+      provider: 'size(variables.providers) > 0 ? variables.providers[0] : ""'
+    related: &storeRelated
+      # The ExternalSecrets in the store's namespace (every namespace for a
+      # ClusterSecretStore) that use this store: the host keeps those the
+      # filter accepts, before the list is capped.
+      externalSecrets:
+        kind: external-secrets.io/ExternalSecret
+        filter: >-
+          string(item.spec.?secretStoreRef.?kind.orValue("SecretStore")) == object.kind &&
+          string(item.spec.?secretStoreRef.?name.orValue("")) == object.metadata.name
+    hideColumns: &storeHide [Capabilities, Ready]   # Capabilities: ours, before Age
+    columns: &storeColumns
+      - name: Provider
+        value: variables.provider
+      - name: Status
+        type: status
+        value: variables.reason
+      - name: Capabilities
+        value: object.?status.?capabilities.orValue("")
+    panel: &storePanel
+      generic: replace
+      sections:
+        - title: Provider
+          icon: vpn_key
+          badge: *readyBadge
+          blocks:
+            - *notReconciled
+            - *notReadyWarning
+            - *notReadyError
+            - *readyMessage
+            - type: fields
+              items:
+                - label: Provider
+                  value: variables.provider
+                - label: Capabilities
+                  value: object.?status.?capabilities
+                - label: Refresh interval
+                  value: object.spec.?refreshInterval
+                - label: Controller
+                  value: object.spec.?controller
+            # The provider's settings as path → value rows; Secret and
+            # ServiceAccount references (auth.secretRef.…SecretRef,
+            # serviceAccountRef) are links showing the name and key, never a
+            # value.
+            - type: settings
+              when: variables.provider != ""
+              value: object.spec.provider[variables.provider]
+        - title: Conditions
+          icon: checklist
+          when: size(object.?status.?conditions.orValue([])) > 0
+          blocks:
+            - type: conditions
+        - title: ExternalSecrets using this store
+          summary: string(size(related.externalSecrets))
+          icon: link
+          blocks:
+            - type: table
+              rows: related.externalSecrets
+              limit: 50
+              empty: None
+              columns:
+                - name: ExternalSecret
+                  value: item.metadata.namespace + "/" + item.metadata.name
+                  link: ref(item)
+                - name: Status
+                  type: status
+                  value: >-
+                    condition(item, "Ready").hasValue()
+                      ? string(condition(item, "Ready").value().?reason.orValue(condition(item, "Ready").value().status)) : "Unknown"
+                  severity: >-
+                    !condition(item, "Ready").hasValue() ? "neutral" :
+                    conditionTrue(item, "Ready") ? "ok" : "error"
+  external-secrets.io/ClusterSecretStore:
+    icon: dns
+    variables: *storeVariables
+    related: *storeRelated
+    hideColumns: *storeHide
+    columns: *storeColumns
+    panel: *storePanel
+
+  external-secrets.io/PushSecret:
+    icon: upload
+    variables:
+      ready: condition(object, "Ready")
+      reason: 'variables.ready.hasValue() ? string(variables.ready.value().?reason.orValue(variables.ready.value().status)) : "Unknown"'
+    hideColumns: [Ready]
+    columns:
+      - name: Stores
+        value: >-
+          object.spec.?secretStoreRefs.orValue([])
+            .map(r, string(r.?kind.orValue("SecretStore")) + "/" + string(r.?name.orValue("(selector)"))).join(",")
+      - name: Status
+        type: status
+        value: variables.reason
+      - name: Last Sync
+        type: age
+        value: object.?status.?refreshTime
+    actions:
+      - *refresh
