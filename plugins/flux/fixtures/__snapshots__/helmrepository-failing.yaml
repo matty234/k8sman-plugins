@@ -1,0 +1,48 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: source.toolkit.fluxcd.io/HelmRepository flux-system/charts
+columns:
+  - name: Ready
+    value: IndexationFailed
+  - name: Revision
+    value: null
+  - name: Suspended
+    value: false
+panel:
+  sections:
+    - blocks:
+        - severity: error
+          text: failed to fetch index, 503 Service Unavailable
+          title: IndexationFailed
+          type: message
+        - items:
+            - severity: error
+              text: Not ready
+          type: badges
+        - items:
+            - copy: true
+              label: URL
+              type: text
+              value: https://charts.example.com
+            - label: Type
+              type: text
+              value: default
+            - label: Interval
+              type: text
+              value: 1h
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-31T18:00:00Z"
+              message: failed to fetch index, 503 Service Unavailable
+              reason: IndexationFailed
+              status: "False"
+              type: Ready
+          type: conditions
+      icon: inventory
+      title: Flux
+alerts:
+  - id: not-ready
+    message: failed to fetch index, 503 Service Unavailable
+    section: custom
+    severity: critical
+    since: "2025-12-31T18:00:00Z"
+status: 'Objects: 1 · suspended: 0 · not ready: 1 (critical)'

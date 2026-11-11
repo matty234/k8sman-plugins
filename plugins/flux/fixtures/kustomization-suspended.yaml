@@ -1,0 +1,21 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: paused
+  namespace: flux-system
+  uid: 22222222-0000-0000-0000-000000000003
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  suspend: true
+  interval: 10m
+  path: ./paused
+  sourceRef:
+    kind: GitRepository
+    name: fleet
+status:
+  lastAppliedRevision: main@sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: Suspended
+      lastTransitionTime: "2025-12-01T00:00:00Z"

@@ -1,0 +1,51 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kustomize.toolkit.fluxcd.io/Kustomization flux-system/paused
+columns:
+  - name: Ready
+    value: Suspended
+  - name: Revision
+    value: main@sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  - name: Suspended
+    value: true
+panel:
+  sections:
+    - blocks:
+        - items:
+            - severity: warning
+              text: Suspended
+            - severity: warning
+              text: Not ready
+          type: badges
+        - items:
+            - copy: true
+              label: Revision
+              mono: true
+              type: text
+              value: main@sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+            - label: Source
+              link:
+                group: source.toolkit.fluxcd.io
+                kind: GitRepository
+                name: fleet
+                namespace: flux-system
+              type: text
+              value: GitRepository/fleet
+            - label: Path
+              type: text
+              value: ./paused
+            - label: Interval
+              type: text
+              value: 10m
+            - label: Prune
+              type: text
+              value: "false"
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-01T00:00:00Z"
+              reason: Suspended
+              status: "False"
+              type: Ready
+          type: conditions
+      icon: sync
+      title: Flux
+status: 'Objects: 1 · suspended: 1 · not ready: 0 (info)'

@@ -1,0 +1,233 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
+# Flux (fluxcd.io): Kustomizations, GitRepositories, HelmRepositories and
+# HelmReleases, read-only. Every kind has a Ready condition and spec.suspend;
+# the revision lives in a different place on each.
+# Without a cluster: k8sman-server plugin test plugins/flux
+apiVersion: k8sman.dev/v1
+id: flux
+name: Flux
+version: 1.0.0
+description: Ready state, revision and suspended badges for Flux Kustomizations, sources and HelmReleases, with alerts for reconciliations that are failing.
+authors: [k8sman community]
+homepage: https://fluxcd.io
+minAppVersion: "0.2.15"
+
+permissions:
+  read:
+    - kustomize.toolkit.fluxcd.io/Kustomization
+    - source.toolkit.fluxcd.io/GitRepository
+    - source.toolkit.fluxcd.io/HelmRepository
+    - helm.toolkit.fluxcd.io/HelmRelease
+
+nav:
+  title: Flux
+  kinds:
+    - kustomize.toolkit.fluxcd.io/Kustomization
+    - helm.toolkit.fluxcd.io/HelmRelease
+    - source.toolkit.fluxcd.io/GitRepository
+    - source.toolkit.fluxcd.io/HelmRepository
+
+kinds:
+  kustomize.toolkit.fluxcd.io/Kustomization:
+    icon: sync
+    variables:
+      ready: condition(object, "Ready")
+      suspended: object.spec.?suspend.orValue(false)
+      revision: object.?status.?lastAppliedRevision
+      # Ready is False, and the object is not suspended.
+      failing: '!object.spec.?suspend.orValue(false) && condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")'
+    columns: &columns
+      - name: Ready
+        type: status
+        value: >-
+          variables.suspended ? "Suspended" :
+          conditionTrue(object, "Ready") ? "Ready" : string(variables.ready.?reason.orValue("Pending"))
+      - name: Revision
+        value: variables.revision
+      - name: Suspended
+        type: bool
+        value: variables.suspended
+    panel:
+      generic: collapse
+      sections:
+        - title: Flux
+          icon: sync
+          blocks:
+            - type: message
+              severity: error
+              when: variables.failing
+              title: string(variables.ready.value().?reason.orValue("Not ready"))
+              text: string(variables.ready.value().?message.orValue(""))
+            - type: badges
+              items:
+                - text: '"Suspended"'
+                  when: variables.suspended
+                  severity: '"warning"'
+                - text: 'conditionTrue(object, "Ready") ? "Ready" : "Not ready"'
+                  severity: 'conditionTrue(object, "Ready") ? "ok" : (variables.failing ? "error" : "warning")'
+            - type: fields
+              items:
+                - label: Revision
+                  value: variables.revision
+                  mono: true
+                  copy: true
+                - label: Source
+                  value: object.spec.sourceRef.kind + "/" + object.spec.sourceRef.name
+                  link: ref("source.toolkit.fluxcd.io", object.spec.sourceRef.kind, object.spec.sourceRef.?namespace.orValue(object.metadata.namespace), object.spec.sourceRef.name)
+                - label: Path
+                  value: object.spec.?path
+                - label: Interval
+                  value: object.spec.?interval
+                - label: Prune
+                  value: string(object.spec.?prune.orValue(false))
+                - label: Last attempted
+                  value: object.?status.?lastAttemptedRevision
+                  mono: true
+            - type: conditions
+    alerts: &alerts
+      - id: not-ready
+        label: Flux objects not ready
+        severity: error
+        when: variables.failing
+        message: string(variables.ready.value().?message.orValue("Not ready"))
+        since: variables.ready.value().?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+    status: &status
+      label: Objects
+      counts:
+        - label: suspended
+          severity: info
+          when: object.spec.?suspend.orValue(false)
+        - label: not ready
+          severity: error
+          when: '!object.spec.?suspend.orValue(false) && condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")'
+
+  helm.toolkit.fluxcd.io/HelmRelease:
+    icon: rocket_launch
+    variables:
+      ready: condition(object, "Ready")
+      suspended: object.spec.?suspend.orValue(false)
+      revision: object.?status.?lastAttemptedRevision
+      failing: '!object.spec.?suspend.orValue(false) && condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")'
+    columns: *columns
+    panel:
+      generic: collapse
+      sections:
+        - title: Flux
+          icon: rocket_launch
+          blocks:
+            - type: message
+              severity: error
+              when: variables.failing
+              title: string(variables.ready.value().?reason.orValue("Not ready"))
+              text: string(variables.ready.value().?message.orValue(""))
+            - type: badges
+              items:
+                - text: '"Suspended"'
+                  when: variables.suspended
+                  severity: '"warning"'
+                - text: 'conditionTrue(object, "Ready") ? "Ready" : "Not ready"'
+                  severity: 'conditionTrue(object, "Ready") ? "ok" : (variables.failing ? "error" : "warning")'
+            - type: fields
+              items:
+                - label: Chart
+                  value: object.spec.?chart.?spec.?chart
+                - label: Chart version
+                  value: object.spec.?chart.?spec.?version
+                - label: Revision
+                  value: variables.revision
+                  mono: true
+                - label: Interval
+                  value: object.spec.?interval
+                - label: Release name
+                  value: object.spec.?releaseName
+            - type: conditions
+    alerts: *alerts
+    status: *status
+
+  source.toolkit.fluxcd.io/GitRepository:
+    icon: code
+    variables:
+      ready: condition(object, "Ready")
+      suspended: object.spec.?suspend.orValue(false)
+      revision: object.?status.?artifact.?revision
+      failing: '!object.spec.?suspend.orValue(false) && condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")'
+    columns: *columns
+    panel:
+      generic: collapse
+      sections:
+        - title: Flux
+          icon: code
+          blocks:
+            - type: message
+              severity: error
+              when: variables.failing
+              title: string(variables.ready.value().?reason.orValue("Not ready"))
+              text: string(variables.ready.value().?message.orValue(""))
+            - type: badges
+              items:
+                - text: '"Suspended"'
+                  when: variables.suspended
+                  severity: '"warning"'
+                - text: 'conditionTrue(object, "Ready") ? "Ready" : "Not ready"'
+                  severity: 'conditionTrue(object, "Ready") ? "ok" : (variables.failing ? "error" : "warning")'
+            - type: fields
+              items:
+                - label: Revision
+                  value: variables.revision
+                  mono: true
+                  copy: true
+                - label: URL
+                  value: object.spec.?url
+                  copy: true
+                - label: Branch
+                  value: object.spec.?ref.?branch
+                - label: Tag
+                  value: object.spec.?ref.?tag
+                - label: Interval
+                  value: object.spec.?interval
+            - type: conditions
+    alerts: *alerts
+    status: *status
+
+  source.toolkit.fluxcd.io/HelmRepository:
+    icon: inventory
+    variables:
+      ready: condition(object, "Ready")
+      suspended: object.spec.?suspend.orValue(false)
+      revision: object.?status.?artifact.?revision
+      failing: '!object.spec.?suspend.orValue(false) && condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")'
+    columns: *columns
+    panel:
+      generic: collapse
+      sections:
+        - title: Flux
+          icon: inventory
+          blocks:
+            - type: message
+              severity: error
+              when: variables.failing
+              title: string(variables.ready.value().?reason.orValue("Not ready"))
+              text: string(variables.ready.value().?message.orValue(""))
+            - type: badges
+              items:
+                - text: '"Suspended"'
+                  when: variables.suspended
+                  severity: '"warning"'
+                - text: 'conditionTrue(object, "Ready") ? "Ready" : "Not ready"'
+                  severity: 'conditionTrue(object, "Ready") ? "ok" : (variables.failing ? "error" : "warning")'
+            - type: fields
+              items:
+                - label: Revision
+                  value: variables.revision
+                  mono: true
+                - label: URL
+                  value: object.spec.?url
+                  copy: true
+                - label: Type
+                  value: object.spec.?type.orValue("default")
+                - label: Interval
+                  value: object.spec.?interval
+            - type: conditions
+    alerts: *alerts
+    status: *status

@@ -1,0 +1,17 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: charts
+  namespace: flux-system
+  uid: 22222222-0000-0000-0000-000000000005
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  interval: 1h
+  url: https://charts.example.com
+status:
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: IndexationFailed
+      message: failed to fetch index, 503 Service Unavailable
+      lastTransitionTime: "2025-12-31T18:00:00Z"

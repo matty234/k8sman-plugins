@@ -1,0 +1,23 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xdatabases.example.org
+  uid: 33333333-0000-0000-0000-000000000003
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  group: example.org
+  names:
+    kind: XDatabase
+    plural: xdatabases
+  claimNames:
+    kind: Database
+    plural: databases
+  versions:
+    - {name: v1alpha1, served: true, referenceable: true}
+status:
+  conditions:
+    - type: Established
+      status: "False"
+      reason: WatchingComposite
+      message: "cannot start controller: CRD not yet available"
+      lastTransitionTime: "2025-12-31T09:00:00Z"

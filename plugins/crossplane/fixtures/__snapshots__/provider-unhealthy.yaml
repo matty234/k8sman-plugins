@@ -1,0 +1,46 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: pkg.crossplane.io/Provider provider-broken
+columns:
+  - name: Installed
+    value: "True"
+  - name: Healthy
+    value: UnhealthyPackageRevision
+  - name: Package
+    value: registry.example.com/crossplane/provider-broken:v0.9.0
+panel:
+  sections:
+    - blocks:
+        - severity: error
+          text: 'cannot resolve package dependencies: no matching version'
+          type: message
+        - items:
+            - severity: ok
+              text: Installed
+            - severity: error
+              text: Not healthy
+          type: badges
+        - items:
+            - copy: true
+              label: Package
+              type: text
+              value: registry.example.com/crossplane/provider-broken:v0.9.0
+          type: fields
+        - conditions:
+            - reason: ActivePackageRevision
+              status: "True"
+              type: Installed
+            - lastTransitionTime: "2025-12-31T08:00:00Z"
+              message: 'cannot resolve package dependencies: no matching version'
+              reason: UnhealthyPackageRevision
+              status: "False"
+              type: Healthy
+          type: conditions
+      icon: extension
+      title: Provider
+alerts:
+  - id: provider-not-working
+    message: 'cannot resolve package dependencies: no matching version'
+    section: custom
+    severity: critical
+    since: "2025-12-31T08:00:00Z"
+status: 'Providers: 1 · not healthy: 1 (critical)'

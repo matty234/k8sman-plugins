@@ -1,0 +1,2 @@
+# Withdrawn plugin versions, one id@version per line (for example flux@1.0.1).
+# k8sman disables these on its next check. Lines starting with # are ignored.

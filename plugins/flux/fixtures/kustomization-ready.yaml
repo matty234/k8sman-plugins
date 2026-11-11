@@ -1,0 +1,23 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+  namespace: flux-system
+  uid: 22222222-0000-0000-0000-000000000001
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  interval: 10m
+  path: ./apps
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: fleet
+status:
+  lastAppliedRevision: main@sha1:0123456789abcdef0123456789abcdef01234567
+  lastAttemptedRevision: main@sha1:0123456789abcdef0123456789abcdef01234567
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ReconciliationSucceeded
+      message: Applied revision main@sha1:0123456789abcdef0123456789abcdef01234567
+      lastTransitionTime: "2025-12-31T00:00:00Z"

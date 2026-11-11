@@ -1,0 +1,36 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: apiextensions.crossplane.io/CompositeResourceDefinition xbuckets.example.org
+columns:
+  - name: Established
+    value: "True"
+  - name: Offered
+    value: "True"
+  - name: Composite kind
+    value: XBucket
+  - name: Claim kind
+    value: null
+panel:
+  sections:
+    - blocks:
+        - items:
+            - label: Group
+              type: text
+              value: example.org
+            - label: Composite kind
+              type: text
+              value: XBucket
+            - label: Versions
+              type: text
+              value: v1
+          type: fields
+        - conditions:
+            - reason: WatchingComposite
+              status: "True"
+              type: Established
+            - reason: WatchingComposite
+              status: "True"
+              type: Offered
+          type: conditions
+      icon: account_tree
+      title: Definition
+status: 'Definitions: 1 · not established: 0'

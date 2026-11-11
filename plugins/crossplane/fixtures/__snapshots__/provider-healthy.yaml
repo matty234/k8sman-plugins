@@ -1,0 +1,38 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: pkg.crossplane.io/Provider provider-example
+columns:
+  - name: Installed
+    value: "True"
+  - name: Healthy
+    value: "True"
+  - name: Package
+    value: registry.example.com/crossplane/provider-example:v1.2.0
+panel:
+  sections:
+    - blocks:
+        - items:
+            - severity: ok
+              text: Installed
+            - severity: ok
+              text: Healthy
+          type: badges
+        - items:
+            - copy: true
+              label: Package
+              type: text
+              value: registry.example.com/crossplane/provider-example:v1.2.0
+            - label: Current revision
+              type: text
+              value: provider-example-1a2b3c
+          type: fields
+        - conditions:
+            - reason: ActivePackageRevision
+              status: "True"
+              type: Installed
+            - reason: HealthyPackageRevision
+              status: "True"
+              type: Healthy
+          type: conditions
+      icon: extension
+      title: Provider
+status: 'Providers: 1 · not healthy: 0'

@@ -1,0 +1,19 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: fleet
+  namespace: flux-system
+  uid: 22222222-0000-0000-0000-000000000004
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  interval: 1m
+  url: https://git.example.com/org/fleet.git
+  ref:
+    branch: main
+status:
+  artifact:
+    revision: main@sha1:0123456789abcdef0123456789abcdef01234567
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Succeeded

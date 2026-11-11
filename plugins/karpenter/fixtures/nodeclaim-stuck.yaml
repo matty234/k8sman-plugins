@@ -1,0 +1,22 @@
+apiVersion: karpenter.sh/v1
+kind: NodeClaim
+metadata:
+  name: batch-fghij
+  uid: 11111111-0000-0000-0000-000000000004
+  creationTimestamp: "2025-12-31T22:00:00Z"
+  labels:
+    karpenter.sh/nodepool: batch
+spec:
+  nodeClassRef:
+    name: missing
+status:
+  conditions:
+    - {type: Launched, status: "True"}
+    - type: Registered
+      status: Unknown
+      reason: AwaitingRegistration
+    - type: Ready
+      status: Unknown
+      reason: ReadyUnknown
+      message: Node not registered with cluster
+      lastTransitionTime: "2025-12-31T22:05:00Z"

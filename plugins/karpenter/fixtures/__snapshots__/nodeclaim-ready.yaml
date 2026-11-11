@@ -1,0 +1,66 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: karpenter.sh/NodeClaim general-abcde
+columns:
+  - name: Ready
+    value: Ready
+  - name: Node
+    value: node-1
+  - name: NodePool
+    value: general
+  - name: Type
+    value: m5.xlarge
+  - name: Capacity
+    value: spot
+panel:
+  refresh: 30
+  sections:
+    - blocks:
+        - items:
+            - text: Launched
+            - text: Registered
+            - text: Initialized
+          type: badges
+        - items:
+            - label: Node
+              link:
+                group: ""
+                kind: Node
+                name: node-1
+                namespace: ""
+              type: text
+              value: node-1
+            - label: NodePool
+              link:
+                group: karpenter.sh
+                kind: NodePool
+                name: general
+                namespace: ""
+              type: text
+              value: general
+            - label: Instance type
+              type: text
+              value: m5.xlarge
+            - label: Capacity type
+              type: text
+              value: spot
+            - label: Zone
+              type: text
+              value: zone-a
+            - label: Node class
+              type: text
+              value: default
+          type: fields
+        - conditions:
+            - status: "True"
+              type: Launched
+            - status: "True"
+              type: Registered
+            - status: "True"
+              type: Initialized
+            - reason: Ready
+              status: "True"
+              type: Ready
+          type: conditions
+      icon: memory
+      title: NodeClaim
+status: 'NodeClaims: 1 · not ready: 0'

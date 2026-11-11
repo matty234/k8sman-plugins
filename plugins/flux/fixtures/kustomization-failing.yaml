@@ -1,0 +1,21 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra
+  namespace: flux-system
+  uid: 22222222-0000-0000-0000-000000000002
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  interval: 10m
+  path: ./infra
+  sourceRef:
+    kind: GitRepository
+    name: fleet
+status:
+  lastAppliedRevision: main@sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: BuildFailed
+      message: kustomize build failed, no such file ./infra/missing
+      lastTransitionTime: "2025-12-31T12:00:00Z"

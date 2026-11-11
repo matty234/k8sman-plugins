@@ -1,0 +1,40 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: helm.toolkit.fluxcd.io/HelmRelease demo/web
+columns:
+  - name: Ready
+    value: Ready
+  - name: Revision
+    value: 1.2.3
+  - name: Suspended
+    value: false
+panel:
+  sections:
+    - blocks:
+        - items:
+            - severity: ok
+              text: Ready
+          type: badges
+        - items:
+            - label: Chart
+              type: text
+              value: web
+            - label: Chart version
+              type: text
+              value: 1.2.x
+            - label: Revision
+              mono: true
+              type: text
+              value: 1.2.3
+            - label: Interval
+              type: text
+              value: 10m
+          type: fields
+        - conditions:
+            - message: Helm upgrade succeeded for release demo/web.v4 with chart web@1.2.3
+              reason: UpgradeSucceeded
+              status: "True"
+              type: Ready
+          type: conditions
+      icon: rocket_launch
+      title: Flux
+status: 'Objects: 1 · suspended: 0 · not ready: 0'

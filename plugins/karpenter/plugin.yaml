@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
+# Karpenter (karpenter.sh): NodePools and NodeClaims, read-only.
+# Without a cluster: k8sman-server plugin test plugins/karpenter
+apiVersion: k8sman.dev/v1
+id: karpenter
+name: Karpenter
+version: 1.0.0
+description: Readiness, node counts and limits for Karpenter NodePools, and launch state for NodeClaims, with alerts for NodeClaims that never become ready.
+authors: [k8sman community]
+homepage: https://karpenter.sh
+minAppVersion: "0.2.15"
+
+permissions:
+  read:
+    - karpenter.sh/NodePool
+    - karpenter.sh/NodeClaim
+
+nav:
+  title: Karpenter
+  kinds:
+    - karpenter.sh/NodePool
+    - karpenter.sh/NodeClaim
+
+kinds:
+  karpenter.sh/NodePool:
+    icon: layers
+    variables:
+      ready: condition(object, "Ready")
+      limits: >-
+        object.spec.?limits.orValue({}).map(k, k).sort()
+          .map(k, k + "=" + string(object.spec.limits[k])).join(", ")
+    columns:
+      - name: Ready
+        type: status
+        value: 'conditionTrue(object, "Ready") ? "Ready" : string(variables.ready.?reason.orValue("Pending"))'
+      - name: Nodes
+        type: number
+        value: object.?status.?resources.?nodes
+      - name: Limits
+        value: variables.limits
+      - name: Consolidation
+        value: object.spec.?disruption.?consolidationPolicy
+    panel:
+      generic: collapse
+      sections:
+        - title: NodePool
+          icon: layers
+          blocks:
+            - type: message
+              severity: warning
+              when: variables.ready.hasValue() && !conditionTrue(object, "Ready")
+              title: string(variables.ready.value().?reason.orValue("Not ready"))
+              text: string(variables.ready.value().?message.orValue(""))
+            - type: fields
+              items:
+                - label: Nodes
+                  type: number
+                  value: object.?status.?resources.?nodes
+                - label: CPU in use
+                  value: object.?status.?resources.?cpu
+                - label: Memory in use
+                  value: object.?status.?resources.?memory
+                - label: Limits
+                  value: variables.limits
+                  when: variables.limits != ""
+                - label: Node class
+                  value: object.spec.template.spec.?nodeClassRef.?name
+                - label: Consolidation
+                  value: object.spec.?disruption.?consolidationPolicy
+                - label: Consolidate after
+                  value: object.spec.?disruption.?consolidateAfter
+            - type: conditions
+    alerts:
+      - id: nodepool-not-ready
+        label: NodePools not ready
+        severity: warning
+        when: variables.ready.hasValue() && !conditionTrue(object, "Ready")
+        message: string(variables.ready.value().?message.orValue("Not ready"))
+        since: variables.ready.value().?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+    status:
+      label: NodePools
+      counts:
+        - label: not ready
+          severity: warning
+          when: condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")
+
+  karpenter.sh/NodeClaim:
+    icon: memory
+    variables:
+      ready: condition(object, "Ready")
+      pool: object.metadata.?labels[?"karpenter.sh/nodepool"].orValue("")
+      # A claim gets a few minutes to launch, register and initialize.
+      stuck: '!conditionTrue(object, "Ready") && age(object.metadata.creationTimestamp) >= duration("15m")'
+    columns:
+      - name: Ready
+        type: status
+        value: 'conditionTrue(object, "Ready") ? "Ready" : string(variables.ready.?reason.orValue("Pending"))'
+      - name: Node
+        value: object.?status.?nodeName
+      - name: NodePool
+        value: variables.pool
+      - name: Type
+        value: object.metadata.?labels[?"node.kubernetes.io/instance-type"]
+      - name: Capacity
+        value: object.metadata.?labels[?"karpenter.sh/capacity-type"]
+    panel:
+      generic: collapse
+      sections:
+        - title: NodeClaim
+          icon: memory
+          blocks:
+            - type: message
+              severity: warning
+              when: variables.stuck
+              title: '"Not ready after " + humanDuration(age(object.metadata.creationTimestamp))'
+              text: string(variables.ready.?message.orValue("Waiting for the node to launch and register."))
+            - type: badges
+              items:
+                - text: 'conditionTrue(object, "Launched") ? "Launched" : "Not launched"'
+                - text: 'conditionTrue(object, "Registered") ? "Registered" : "Not registered"'
+                - text: 'conditionTrue(object, "Initialized") ? "Initialized" : "Not initialized"'
+            - type: fields
+              items:
+                - label: Node
+                  value: object.?status.?nodeName
+                  link: ref("", "Node", string(object.status.nodeName))
+                  when: object.?status.?nodeName.hasValue()
+                - label: NodePool
+                  value: variables.pool
+                  link: ref("karpenter.sh", "NodePool", variables.pool)
+                  when: variables.pool != ""
+                - label: Instance type
+                  value: object.metadata.?labels[?"node.kubernetes.io/instance-type"]
+                - label: Capacity type
+                  value: object.metadata.?labels[?"karpenter.sh/capacity-type"]
+                - label: Zone
+                  value: object.metadata.?labels[?"topology.kubernetes.io/zone"]
+                - label: Node class
+                  value: object.spec.?nodeClassRef.?name
+            - type: conditions
+    alerts:
+      - id: nodeclaim-not-ready
+        label: NodeClaims not ready
+        severity: warning
+        when: variables.stuck
+        message: string(variables.ready.?message.orValue("Not ready"))
+        since: variables.ready.?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+    status:
+      label: NodeClaims
+      counts:
+        - label: not ready
+          severity: warning
+          when: '!conditionTrue(object, "Ready") && age(object.metadata.creationTimestamp) >= duration("15m")'

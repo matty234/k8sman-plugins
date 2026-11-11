@@ -1,0 +1,41 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: source.toolkit.fluxcd.io/GitRepository flux-system/fleet
+columns:
+  - name: Ready
+    value: Ready
+  - name: Revision
+    value: main@sha1:0123456789abcdef0123456789abcdef01234567
+  - name: Suspended
+    value: false
+panel:
+  sections:
+    - blocks:
+        - items:
+            - severity: ok
+              text: Ready
+          type: badges
+        - items:
+            - copy: true
+              label: Revision
+              mono: true
+              type: text
+              value: main@sha1:0123456789abcdef0123456789abcdef01234567
+            - copy: true
+              label: URL
+              type: text
+              value: https://git.example.com/org/fleet.git
+            - label: Branch
+              type: text
+              value: main
+            - label: Interval
+              type: text
+              value: 1m
+          type: fields
+        - conditions:
+            - reason: Succeeded
+              status: "True"
+              type: Ready
+          type: conditions
+      icon: code
+      title: Flux
+status: 'Objects: 1 · suspended: 0 · not ready: 0'

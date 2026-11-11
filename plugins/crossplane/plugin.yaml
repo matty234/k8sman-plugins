@@ -1,0 +1,172 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
+# Crossplane (crossplane.io): Compositions, CompositeResourceDefinitions and
+# Providers, read-only.
+# Without a cluster: k8sman-server plugin test plugins/crossplane
+apiVersion: k8sman.dev/v1
+id: crossplane
+name: Crossplane
+version: 1.0.0
+description: Installed and healthy state for Providers, established state for CompositeResourceDefinitions, and the pipeline of each Composition, with alerts for what is not working.
+authors: [k8sman community]
+homepage: https://www.crossplane.io
+minAppVersion: "0.2.15"
+
+permissions:
+  read:
+    - apiextensions.crossplane.io/Composition
+    - apiextensions.crossplane.io/CompositeResourceDefinition
+    - pkg.crossplane.io/Provider
+
+nav:
+  title: Crossplane
+  kinds:
+    - pkg.crossplane.io/Provider
+    - apiextensions.crossplane.io/CompositeResourceDefinition
+    - apiextensions.crossplane.io/Composition
+
+kinds:
+  pkg.crossplane.io/Provider:
+    icon: extension
+    variables:
+      installed: condition(object, "Installed")
+      healthy: condition(object, "Healthy")
+      # Healthy or Installed is False (Unknown is a package still on its way).
+      broken: >-
+        (condition(object, "Healthy").hasValue() && condition(object, "Healthy").value().status == "False") ||
+        (condition(object, "Installed").hasValue() && condition(object, "Installed").value().status == "False")
+    columns:
+      - name: Installed
+        type: status
+        value: 'conditionTrue(object, "Installed") ? "True" : string(variables.installed.?reason.orValue("False"))'
+      - name: Healthy
+        type: status
+        value: 'conditionTrue(object, "Healthy") ? "True" : string(variables.healthy.?reason.orValue("False"))'
+      - name: Package
+        value: object.spec.?package
+    panel:
+      generic: collapse
+      sections:
+        - title: Provider
+          icon: extension
+          blocks:
+            - type: message
+              severity: error
+              when: variables.broken
+              text: >-
+                string(variables.healthy.?message.orValue(variables.installed.?message.orValue("Not healthy")))
+            - type: badges
+              items:
+                - text: 'conditionTrue(object, "Installed") ? "Installed" : "Not installed"'
+                  severity: 'conditionTrue(object, "Installed") ? "ok" : "warning"'
+                - text: 'conditionTrue(object, "Healthy") ? "Healthy" : "Not healthy"'
+                  severity: 'conditionTrue(object, "Healthy") ? "ok" : (variables.broken ? "error" : "warning")'
+            - type: fields
+              items:
+                - label: Package
+                  value: object.spec.?package
+                  copy: true
+                - label: Current revision
+                  value: object.?status.?currentRevision
+                - label: Revision activation
+                  value: object.spec.?revisionActivationPolicy
+            - type: conditions
+    alerts:
+      - id: provider-not-working
+        label: Providers not installed or healthy
+        severity: error
+        when: variables.broken
+        message: string(variables.healthy.?message.orValue(variables.installed.?message.orValue("Not healthy")))
+        since: variables.healthy.?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+    status:
+      label: Providers
+      counts:
+        - label: not healthy
+          severity: error
+          when: '(condition(object, "Healthy").hasValue() && !conditionTrue(object, "Healthy")) || (condition(object, "Installed").hasValue() && !conditionTrue(object, "Installed"))'
+
+  apiextensions.crossplane.io/CompositeResourceDefinition:
+    icon: account_tree
+    variables:
+      established: condition(object, "Established")
+      broken: 'condition(object, "Established").hasValue() && condition(object, "Established").value().status == "False"'
+    columns:
+      - name: Established
+        type: status
+        value: 'conditionTrue(object, "Established") ? "True" : string(variables.established.?reason.orValue("False"))'
+      - name: Offered
+        type: status
+        value: 'conditionTrue(object, "Offered") ? "True" : "False"'
+      - name: Composite kind
+        value: object.spec.?names.?kind
+      - name: Claim kind
+        value: object.spec.?claimNames.?kind
+    panel:
+      generic: collapse
+      sections:
+        - title: Definition
+          icon: account_tree
+          blocks:
+            - type: message
+              severity: error
+              when: variables.broken
+              text: string(variables.established.?message.orValue("Not established"))
+            - type: fields
+              items:
+                - label: Group
+                  value: object.spec.?group
+                - label: Composite kind
+                  value: object.spec.?names.?kind
+                - label: Claim kind
+                  value: object.spec.?claimNames.?kind
+                - label: Versions
+                  value: object.spec.?versions.orValue([]).map(v, string(v.name)).join(", ")
+            - type: conditions
+    alerts:
+      - id: xrd-not-established
+        label: Definitions not established
+        severity: error
+        when: variables.broken
+        message: string(variables.established.?message.orValue("Not established"))
+        since: variables.established.?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+    status:
+      label: Definitions
+      counts:
+        - label: not established
+          severity: error
+          when: 'condition(object, "Established").hasValue() && !conditionTrue(object, "Established")'
+
+  apiextensions.crossplane.io/Composition:
+    icon: layers
+    variables:
+      steps: object.spec.?pipeline.orValue([])
+    columns:
+      - name: Composite type
+        value: object.spec.?compositeTypeRef.?kind
+      - name: Mode
+        value: object.spec.?mode.orValue("Pipeline")
+      - name: Steps
+        type: number
+        value: size(variables.steps)
+    panel:
+      generic: collapse
+      sections:
+        - title: Composition
+          icon: layers
+          blocks:
+            - type: fields
+              items:
+                - label: Composite type
+                  value: object.spec.?compositeTypeRef.?kind
+                - label: API version
+                  value: object.spec.?compositeTypeRef.?apiVersion
+                - label: Mode
+                  value: object.spec.?mode.orValue("Pipeline")
+            - type: table
+              when: size(variables.steps) > 0
+              rows: variables.steps
+              columns:
+                - name: Step
+                  value: item.step
+                - name: Function
+                  value: item.functionRef.name

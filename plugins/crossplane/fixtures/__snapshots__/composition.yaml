@@ -1,0 +1,38 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: apiextensions.crossplane.io/Composition xbuckets.aws.example.org
+columns:
+  - name: Composite type
+    value: XBucket
+  - name: Mode
+    value: Pipeline
+  - name: Steps
+    value: 2
+panel:
+  sections:
+    - blocks:
+        - items:
+            - label: Composite type
+              type: text
+              value: XBucket
+            - label: API version
+              type: text
+              value: example.org/v1
+            - label: Mode
+              type: text
+              value: Pipeline
+          type: fields
+        - columns:
+            - name: Step
+              type: text
+            - name: Function
+              type: text
+          limit: 20
+          rows:
+            - - value: render
+              - value: function-go-templating
+            - - value: ready
+              - value: function-auto-ready
+          total: 2
+          type: table
+      icon: layers
+      title: Composition

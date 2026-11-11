@@ -1,0 +1,39 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: karpenter.sh/NodePool batch
+columns:
+  - name: Ready
+    value: NodeClassNotReady
+  - name: Nodes
+    value: null
+  - name: Limits
+    value: ""
+  - name: Consolidation
+    value: null
+panel:
+  sections:
+    - blocks:
+        - severity: warning
+          text: NodeClass not found on cluster
+          title: NodeClassNotReady
+          type: message
+        - items:
+            - label: Node class
+              type: text
+              value: missing
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-01T00:00:30Z"
+              message: NodeClass not found on cluster
+              reason: NodeClassNotReady
+              status: "False"
+              type: Ready
+          type: conditions
+      icon: layers
+      title: NodePool
+alerts:
+  - id: nodepool-not-ready
+    message: NodeClass not found on cluster
+    section: custom
+    severity: warning
+    since: "2025-12-01T00:00:30Z"
+status: 'NodePools: 1 · not ready: 1 (warning)'

@@ -1,0 +1,54 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kustomize.toolkit.fluxcd.io/Kustomization flux-system/apps
+columns:
+  - name: Ready
+    value: Ready
+  - name: Revision
+    value: main@sha1:0123456789abcdef0123456789abcdef01234567
+  - name: Suspended
+    value: false
+panel:
+  sections:
+    - blocks:
+        - items:
+            - severity: ok
+              text: Ready
+          type: badges
+        - items:
+            - copy: true
+              label: Revision
+              mono: true
+              type: text
+              value: main@sha1:0123456789abcdef0123456789abcdef01234567
+            - label: Source
+              link:
+                group: source.toolkit.fluxcd.io
+                kind: GitRepository
+                name: fleet
+                namespace: flux-system
+              type: text
+              value: GitRepository/fleet
+            - label: Path
+              type: text
+              value: ./apps
+            - label: Interval
+              type: text
+              value: 10m
+            - label: Prune
+              type: text
+              value: "true"
+            - label: Last attempted
+              mono: true
+              type: text
+              value: main@sha1:0123456789abcdef0123456789abcdef01234567
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-31T00:00:00Z"
+              message: Applied revision main@sha1:0123456789abcdef0123456789abcdef01234567
+              reason: ReconciliationSucceeded
+              status: "True"
+              type: Ready
+          type: conditions
+      icon: sync
+      title: Flux
+status: 'Objects: 1 · suspended: 0 · not ready: 0'

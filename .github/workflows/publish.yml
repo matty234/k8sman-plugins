@@ -1,0 +1,63 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly re-sign: the index expires 30 days after it is written.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugins-repo
+      - uses: actions/checkout@v4
+        with:
+          repository: matty234/k8sman
+          ref: main
+          path: k8sman
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: k8sman/backend/go.mod
+          cache-dependency-path: k8sman/backend/go.sum
+      - name: Build k8sman-server
+        working-directory: k8sman/backend
+        run: go build -o "$RUNNER_TEMP/k8sman-server" ./cmd/k8sman-server
+      - name: Build and sign the index
+        working-directory: plugins-repo
+        env:
+          K8SMAN_PLUGIN_INDEX_KEY: ${{ secrets.PLUGIN_INDEX_KEY }}
+        run: |
+          set -e
+          test -n "$K8SMAN_PLUGIN_INDEX_KEY" || { echo "PLUGIN_INDEX_KEY secret is not set" >&2; exit 1; }
+          "$RUNNER_TEMP/k8sman-server" plugin index plugins -o site --revoked revoked.txt
+      - name: Verify the index
+        working-directory: plugins-repo
+        run: '"$RUNNER_TEMP/k8sman-server" plugin verify-index site --key "${{ vars.PLUGIN_INDEX_PUBKEY }}"'
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: plugins-repo/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

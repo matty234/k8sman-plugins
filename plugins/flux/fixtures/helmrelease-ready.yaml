@@ -1,0 +1,24 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: web
+  namespace: demo
+  uid: 22222222-0000-0000-0000-000000000006
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: web
+      version: 1.2.x
+      sourceRef:
+        kind: HelmRepository
+        name: charts
+        namespace: flux-system
+status:
+  lastAttemptedRevision: 1.2.3
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: UpgradeSucceeded
+      message: Helm upgrade succeeded for release demo/web.v4 with chart web@1.2.3

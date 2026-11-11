@@ -1,0 +1,29 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: general
+  uid: 11111111-0000-0000-0000-000000000001
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
+  limits:
+    memory: 2000Gi
+    cpu: "1000"
+status:
+  resources:
+    nodes: "4"
+    cpu: "32"
+    memory: 128Gi
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Ready
+      lastTransitionTime: "2025-06-01T00:01:00Z"

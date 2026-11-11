@@ -1,0 +1,18 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xbuckets.aws.example.org
+  uid: 33333333-0000-0000-0000-000000000005
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  compositeTypeRef:
+    apiVersion: example.org/v1
+    kind: XBucket
+  mode: Pipeline
+  pipeline:
+    - step: render
+      functionRef:
+        name: function-go-templating
+    - step: ready
+      functionRef:
+        name: function-auto-ready

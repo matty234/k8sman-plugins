@@ -1,0 +1,46 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: karpenter.sh/NodePool general
+columns:
+  - name: Ready
+    value: Ready
+  - name: Nodes
+    value: "4"
+  - name: Limits
+    value: cpu=1000, memory=2000Gi
+  - name: Consolidation
+    value: WhenEmptyOrUnderutilized
+panel:
+  sections:
+    - blocks:
+        - items:
+            - label: Nodes
+              type: number
+              value: "4"
+            - label: CPU in use
+              type: text
+              value: "32"
+            - label: Memory in use
+              type: text
+              value: 128Gi
+            - label: Limits
+              type: text
+              value: cpu=1000, memory=2000Gi
+            - label: Node class
+              type: text
+              value: default
+            - label: Consolidation
+              type: text
+              value: WhenEmptyOrUnderutilized
+            - label: Consolidate after
+              type: text
+              value: 1m
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-06-01T00:01:00Z"
+              reason: Ready
+              status: "True"
+              type: Ready
+          type: conditions
+      icon: layers
+      title: NodePool
+status: 'NodePools: 1 · not ready: 0'

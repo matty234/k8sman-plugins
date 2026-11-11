@@ -1,0 +1,47 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: apiextensions.crossplane.io/CompositeResourceDefinition xdatabases.example.org
+columns:
+  - name: Established
+    value: WatchingComposite
+  - name: Offered
+    value: "False"
+  - name: Composite kind
+    value: XDatabase
+  - name: Claim kind
+    value: Database
+panel:
+  sections:
+    - blocks:
+        - severity: error
+          text: 'cannot start controller: CRD not yet available'
+          type: message
+        - items:
+            - label: Group
+              type: text
+              value: example.org
+            - label: Composite kind
+              type: text
+              value: XDatabase
+            - label: Claim kind
+              type: text
+              value: Database
+            - label: Versions
+              type: text
+              value: v1alpha1
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-31T09:00:00Z"
+              message: 'cannot start controller: CRD not yet available'
+              reason: WatchingComposite
+              status: "False"
+              type: Established
+          type: conditions
+      icon: account_tree
+      title: Definition
+alerts:
+  - id: xrd-not-established
+    message: 'cannot start controller: CRD not yet available'
+    section: custom
+    severity: critical
+    since: "2025-12-31T09:00:00Z"
+status: 'Definitions: 1 · not established: 1 (critical)'

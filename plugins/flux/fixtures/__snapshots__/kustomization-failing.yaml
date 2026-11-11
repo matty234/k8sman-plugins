@@ -1,0 +1,60 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kustomize.toolkit.fluxcd.io/Kustomization flux-system/infra
+columns:
+  - name: Ready
+    value: BuildFailed
+  - name: Revision
+    value: main@sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - name: Suspended
+    value: false
+panel:
+  sections:
+    - blocks:
+        - severity: error
+          text: kustomize build failed, no such file ./infra/missing
+          title: BuildFailed
+          type: message
+        - items:
+            - severity: error
+              text: Not ready
+          type: badges
+        - items:
+            - copy: true
+              label: Revision
+              mono: true
+              type: text
+              value: main@sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            - label: Source
+              link:
+                group: source.toolkit.fluxcd.io
+                kind: GitRepository
+                name: fleet
+                namespace: flux-system
+              type: text
+              value: GitRepository/fleet
+            - label: Path
+              type: text
+              value: ./infra
+            - label: Interval
+              type: text
+              value: 10m
+            - label: Prune
+              type: text
+              value: "false"
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-31T12:00:00Z"
+              message: kustomize build failed, no such file ./infra/missing
+              reason: BuildFailed
+              status: "False"
+              type: Ready
+          type: conditions
+      icon: sync
+      title: Flux
+alerts:
+  - id: not-ready
+    message: kustomize build failed, no such file ./infra/missing
+    section: custom
+    severity: critical
+    since: "2025-12-31T12:00:00Z"
+status: 'Objects: 1 · suspended: 0 · not ready: 1 (critical)'

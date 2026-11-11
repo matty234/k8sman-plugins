@@ -1,0 +1,16 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-broken
+  uid: 33333333-0000-0000-0000-000000000002
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  package: registry.example.com/crossplane/provider-broken:v0.9.0
+status:
+  conditions:
+    - {type: Installed, status: "True", reason: ActivePackageRevision}
+    - type: Healthy
+      status: "False"
+      reason: UnhealthyPackageRevision
+      message: "cannot resolve package dependencies: no matching version"
+      lastTransitionTime: "2025-12-31T08:00:00Z"

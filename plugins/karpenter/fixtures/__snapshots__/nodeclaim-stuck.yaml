@@ -1,0 +1,60 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: karpenter.sh/NodeClaim batch-fghij
+columns:
+  - name: Ready
+    value: ReadyUnknown
+  - name: Node
+    value: null
+  - name: NodePool
+    value: batch
+  - name: Type
+    value: null
+  - name: Capacity
+    value: null
+panel:
+  refresh: 30
+  sections:
+    - blocks:
+        - severity: warning
+          text: Node not registered with cluster
+          title: Not ready after 2h
+          type: message
+        - items:
+            - text: Launched
+            - text: Not registered
+            - text: Not initialized
+          type: badges
+        - items:
+            - label: NodePool
+              link:
+                group: karpenter.sh
+                kind: NodePool
+                name: batch
+                namespace: ""
+              type: text
+              value: batch
+            - label: Node class
+              type: text
+              value: missing
+          type: fields
+        - conditions:
+            - status: "True"
+              type: Launched
+            - reason: AwaitingRegistration
+              status: Unknown
+              type: Registered
+            - lastTransitionTime: "2025-12-31T22:05:00Z"
+              message: Node not registered with cluster
+              reason: ReadyUnknown
+              status: Unknown
+              type: Ready
+          type: conditions
+      icon: memory
+      title: NodeClaim
+alerts:
+  - id: nodeclaim-not-ready
+    message: Node not registered with cluster
+    section: custom
+    severity: warning
+    since: "2025-12-31T22:05:00Z"
+status: 'NodeClaims: 1 · not ready: 1 (warning)'
