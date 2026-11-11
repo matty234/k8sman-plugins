@@ -1,0 +1,72 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: cdi.kubevirt.io/DataVolume bioinformatics/kv-ubuntu-test-root
+columns:
+  - name: Phase
+    value: ImportInProgress
+  - name: Progress
+    value: 42.3%
+  - name: Source
+    value: 'http: noble-server-cloudimg-amd64.img'
+  - name: Size
+    value: 20Gi
+  - name: Storage class
+    value: rook-ceph-block-ssd
+panel:
+  sections:
+    - badge:
+        severity: info
+        text: ImportInProgress
+      blocks:
+        - items:
+            - label: Phase
+              type: status
+              value: ImportInProgress
+            - label: Progress
+              type: text
+              value: 42.3%
+            - label: Source
+              mono: true
+              type: text
+              value: 'http: noble-server-cloudimg-amd64.img'
+            - label: Size
+              type: text
+              value: 20Gi
+            - label: Storage class
+              type: text
+              value: rook-ceph-block-ssd
+            - label: Restarts
+              type: text
+              value: "0"
+            - label: PVC
+              link:
+                group: ""
+                kind: PersistentVolumeClaim
+                name: kv-ubuntu-test-root
+                namespace: bioinformatics
+              type: text
+              value: kv-ubuntu-test-root
+            - label: VirtualMachine
+              link:
+                group: kubevirt.io
+                kind: VirtualMachine
+                name: kv-ubuntu-test
+                namespace: bioinformatics
+              type: text
+              value: kv-ubuntu-test
+          type: fields
+        - conditions:
+            - message: PVC kv-ubuntu-test-root Bound
+              reason: Bound
+              status: "True"
+              type: Bound
+            - reason: ImportInProgress
+              status: "False"
+              type: Ready
+            - message: Import is running
+              reason: Pending
+              status: "True"
+              type: Running
+          type: conditions
+      icon: storage
+      title: DataVolume
+status: 'DataVolumes: 1 · importing: 1 · failed: 0 (info)'

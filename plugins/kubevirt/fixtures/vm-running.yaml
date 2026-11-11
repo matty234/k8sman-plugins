@@ -1,0 +1,393 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  annotations:
+    kubevirt.io/latest-observed-api-version: v1
+    kubevirt.io/storage-observed-api-version: v1
+  creationTimestamp: "2026-11-11T16:25:25Z"
+  finalizers:
+    - kubevirt.io/virtualMachineControllerFinalize
+  generation: 1
+  name: kv-ubuntu-test
+  namespace: bioinformatics
+  uid: 6673faeb-bba9-4370-9886-9cff3cfb70f9
+spec:
+  dataVolumeTemplates:
+    - metadata:
+        name: kv-ubuntu-test-root
+      spec:
+        source:
+          registry:
+            url: docker://quay.io/containerdisks/ubuntu:24.04
+        storage:
+          resources:
+            requests:
+              storage: 20Gi
+          storageClassName: rook-ceph-block-ssd
+  runStrategy: Always
+  template:
+    metadata:
+      annotations:
+        kubevirt.io/pci-topology-version: v3
+    spec:
+      architecture: amd64
+      domain:
+        cpu:
+          cores: 2
+        devices:
+          disks:
+            - disk:
+                bus: virtio
+              name: root
+            - disk:
+                bus: virtio
+              name: cloudinit
+            - name: data
+              disk:
+                bus: virtio
+          interfaces:
+            - masquerade: {}
+              name: default
+        firmware:
+          serial: b9376217-1207-467c-956e-0d50e4007da8
+          uuid: f8411f65-3d15-4888-be83-1b711e5efd87
+        machine:
+          type: q35
+        memory:
+          guest: 4Gi
+        resources: {}
+      evictionStrategy: LiveMigrate
+      networks:
+        - name: default
+          pod: {}
+      nodeSelector:
+        kubernetes.io/hostname: lon-wrk1
+      volumes:
+        - dataVolume:
+            name: kv-ubuntu-test-root
+          name: root
+        - cloudInitNoCloud:
+            secretRef:
+              name: tailscale-vm-cloudinit
+          name: cloudinit
+        - name: data
+          persistentVolumeClaim:
+            claimName: genomes-scratch
+status:
+  conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-11-11T16:27:13Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: null
+      message: All of the VMI's DVs are bound and ready
+      reason: AllDVsReady
+      status: "True"
+      type: DataVolumesReady
+    - lastProbeTime: null
+      lastTransitionTime: null
+      status: "True"
+      type: LiveMigratable
+    - lastProbeTime: null
+      lastTransitionTime: null
+      status: "True"
+      type: StorageLiveMigratable
+  created: true
+  desiredGeneration: 1
+  observedGeneration: 1
+  printableStatus: Running
+  ready: true
+  runStrategy: Always
+  volumeSnapshotStatuses:
+    - enabled: false
+      name: root
+      reason: 'No VolumeSnapshotClass: Volume snapshots are not configured for this StorageClass [rook-ceph-block-ssd] [root]'
+    - enabled: false
+      name: cloudinit
+      reason: Snapshot is not supported for this volumeSource type [cloudinit]
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstance
+metadata:
+  annotations:
+    kubevirt.io/latest-observed-api-version: v1
+    kubevirt.io/pci-topology-version: v3
+    kubevirt.io/storage-observed-api-version: v1
+    kubevirt.io/vm-generation: "1"
+  creationTimestamp: "2026-11-11T16:27:03Z"
+  finalizers:
+    - kubevirt.io/virtualMachineControllerFinalize
+    - kubevirt.io/foregroundDeleteVirtualMachine
+  generation: 8
+  labels:
+    kubevirt.io/nodeName: lon-wrk1
+  name: kv-ubuntu-test
+  namespace: bioinformatics
+  ownerReferences:
+    - apiVersion: kubevirt.io/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: VirtualMachine
+      name: kv-ubuntu-test
+      uid: 6673faeb-bba9-4370-9886-9cff3cfb70f9
+  uid: 6fcae8e3-f0b5-4f7f-9066-69ec4342dc7d
+spec:
+  architecture: amd64
+  domain:
+    cpu:
+      cores: 2
+      model: host-model
+    devices:
+      disks:
+        - disk:
+            bus: virtio
+          name: root
+        - disk:
+            bus: virtio
+          name: cloudinit
+      interfaces:
+        - masquerade: {}
+          name: default
+    features:
+      acpi:
+        enabled: true
+    firmware:
+      serial: b9376217-1207-467c-956e-0d50e4007da8
+      uuid: f8411f65-3d15-4888-be83-1b711e5efd87
+    machine:
+      type: q35
+    memory:
+      guest: 4Gi
+      maxGuest: 16Gi
+    resources: {}
+  evictionStrategy: LiveMigrate
+  networks:
+    - name: default
+      pod: {}
+  nodeSelector:
+    kubernetes.io/hostname: lon-wrk1
+  volumes:
+    - dataVolume:
+        name: kv-ubuntu-test-root
+      name: root
+    - cloudInitNoCloud:
+        secretRef:
+          name: tailscale-vm-cloudinit
+      name: cloudinit
+status:
+  activePods:
+    d50f32ea-fb2e-42af-8b62-d78b3a6116e1: lon-wrk1
+  conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-11-11T16:27:13Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: null
+      message: All of the VMI's DVs are bound and ready
+      reason: AllDVsReady
+      status: "True"
+      type: DataVolumesReady
+    - lastProbeTime: null
+      lastTransitionTime: null
+      status: "True"
+      type: LiveMigratable
+    - lastProbeTime: null
+      lastTransitionTime: null
+      status: "True"
+      type: StorageLiveMigratable
+  currentCPUTopology:
+    cores: 2
+  guestOSInfo: {}
+  interfaces:
+    - infoSource: domain
+      ipAddress: 10.40.4.41
+      ipAddresses:
+        - 10.40.4.41
+        - 2a02:df9:f:104::16d2
+      linkState: up
+      mac: 32:88:37:1f:ed:64
+      name: default
+      podInterfaceName: eth0
+      queueCount: 1
+  launcherContainerImageVersion: quay.io/kubevirt/virt-launcher:v1.9.1
+  machine:
+    type: pc-q35-rhel9.8.0
+  memory:
+    guestAtBoot: 4Gi
+    guestCurrent: 4Gi
+    guestRequested: 4Gi
+    memoryOverhead: 276Mi
+  migrationMethod: BlockMigration
+  migrationTransport: Unix
+  nodeName: lon-wrk1
+  phase: Running
+  phaseTransitionTimestamps:
+    - phase: Pending
+      phaseTransitionTimestamp: "2026-11-11T16:27:03Z"
+    - phase: Scheduling
+      phaseTransitionTimestamp: "2026-11-11T16:27:03Z"
+    - phase: Scheduled
+      phaseTransitionTimestamp: "2026-11-11T16:27:14Z"
+    - phase: Running
+      phaseTransitionTimestamp: "2026-11-11T16:27:15Z"
+  qosClass: Burstable
+  runtimeUser: 107
+  selinuxContext: system_u:object_r:containerd_state_t:s0
+  virtualMachineRevisionName: revision-start-vm-6673faeb-bba9-4370-9886-9cff3cfb70f9-1
+  volumeStatus:
+    - name: cloudinit
+      size: 1048576
+      target: vdb
+    - name: root
+      persistentVolumeClaimInfo:
+        accessModes:
+          - ReadWriteMany
+        capacity:
+          storage: 20Gi
+        claimName: kv-ubuntu-test-root
+        filesystemOverhead: "0"
+        requests:
+          storage: "21474836480"
+        volumeMode: Block
+      target: vda
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: "2026-11-11T16:27:03Z"
+  generateName: virt-launcher-kv-ubuntu-test-
+  generation: 1
+  labels:
+    kubevirt.io: virt-launcher
+    kubevirt.io/created-by: 6fcae8e3-f0b5-4f7f-9066-69ec4342dc7d
+    kubevirt.io/nodeName: lon-wrk1
+    vm.kubevirt.io/name: kv-ubuntu-test
+    vmi.kubevirt.io/id: kv-ubuntu-test
+  name: virt-launcher-kv-ubuntu-test-8gbkw
+  namespace: bioinformatics
+  ownerReferences:
+    - apiVersion: kubevirt.io/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: VirtualMachineInstance
+      name: kv-ubuntu-test
+      uid: 6fcae8e3-f0b5-4f7f-9066-69ec4342dc7d
+  uid: d50f32ea-fb2e-42af-8b62-d78b3a6116e1
+status:
+  conditions:
+    - lastProbeTime: "2026-11-11T16:27:03Z"
+      lastTransitionTime: "2026-11-11T16:27:03Z"
+      message: the virtual machine is not paused
+      reason: NotPaused
+      status: "True"
+      type: kubevirt.io/virtual-machine-unpaused
+    - lastProbeTime: null
+      lastTransitionTime: "2026-11-11T16:27:12Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2026-11-11T16:27:12Z"
+      observedGeneration: 1
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2026-11-11T16:27:13Z"
+      observedGeneration: 1
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2026-11-11T16:27:13Z"
+      observedGeneration: 1
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2026-11-11T16:27:03Z"
+      observedGeneration: 1
+      status: "True"
+      type: PodScheduled
+  hostIP: 10.20.1.221
+  hostIPs:
+    - ip: 10.20.1.221
+    - ip: 2a02:df9:f:a::41
+  observedGeneration: 1
+  phase: Running
+  podIP: 10.40.4.41
+  podIPs:
+    - ip: 10.40.4.41
+    - ip: 2a02:df9:f:104::16d2
+  qosClass: Burstable
+  startTime: "2026-11-11T16:27:03Z"
+spec:
+  nodeName: lon-wrk1
+---
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  annotations:
+    cdi.kubevirt.io/allowClaimAdoption: "true"
+    cdi.kubevirt.io/storage.usePopulator: "true"
+  creationTimestamp: "2026-11-11T16:25:25Z"
+  generation: 1
+  labels:
+    instancetype.kubevirt.io/default-instancetype: u1.medium
+    instancetype.kubevirt.io/default-preference: ubuntu
+    kubevirt.io/created-by: 6673faeb-bba9-4370-9886-9cff3cfb70f9
+  name: kv-ubuntu-test-root
+  namespace: bioinformatics
+  ownerReferences:
+    - apiVersion: kubevirt.io/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: VirtualMachine
+      name: kv-ubuntu-test
+      uid: 6673faeb-bba9-4370-9886-9cff3cfb70f9
+  uid: 35d7184e-b4b8-4502-b625-f4e0d3f05508
+spec:
+  source:
+    registry:
+      url: docker://quay.io/containerdisks/ubuntu:24.04
+  storage:
+    resources:
+      requests:
+        storage: 20Gi
+    storageClassName: rook-ceph-block-ssd
+status:
+  claimName: kv-ubuntu-test-root
+  conditions:
+    - lastHeartbeatTime: "2026-11-11T16:27:03Z"
+      lastTransitionTime: "2026-11-11T16:27:03Z"
+      message: PVC kv-ubuntu-test-root Bound
+      reason: Bound
+      status: "True"
+      type: Bound
+    - lastHeartbeatTime: "2026-11-11T16:27:03Z"
+      lastTransitionTime: "2026-11-11T16:27:03Z"
+      status: "True"
+      type: Ready
+    - lastHeartbeatTime: "2026-11-11T16:27:01Z"
+      lastTransitionTime: "2026-11-11T16:27:01Z"
+      message: Import Complete
+      reason: Completed
+      status: "False"
+      type: Running
+  phase: Succeeded
+  progress: 100.0%
+---
+apiVersion: snapshot.kubevirt.io/v1beta1
+kind: VirtualMachineSnapshot
+metadata:
+  name: kv-ubuntu-test-before-upgrade
+  namespace: bioinformatics
+  creationTimestamp: "2025-12-31T10:00:00Z"
+spec:
+  source:
+    apiGroup: kubevirt.io
+    kind: VirtualMachine
+    name: kv-ubuntu-test
+status:
+  phase: Succeeded
+  readyToUse: true
+  creationTime: "2025-12-31T10:00:30Z"

@@ -1,0 +1,92 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  annotations:
+    kubevirt.io/latest-observed-api-version: v1
+    kubevirt.io/storage-observed-api-version: v1
+  creationTimestamp: "2026-11-11T16:25:25Z"
+  finalizers:
+    - kubevirt.io/virtualMachineControllerFinalize
+  generation: 1
+  name: gpu-ubuntu
+  namespace: bioinformatics
+  uid: 6673faeb-bba9-4370-9886-9cff3cfb70f9
+spec:
+  dataVolumeTemplates:
+    - metadata:
+        name: kv-ubuntu-test-root
+      spec:
+        source:
+          registry:
+            url: docker://quay.io/containerdisks/ubuntu:24.04
+        storage:
+          resources:
+            requests:
+              storage: 20Gi
+          storageClassName: rook-ceph-block-ssd
+  runStrategy: Always
+  template:
+    metadata:
+      annotations:
+        kubevirt.io/pci-topology-version: v3
+    spec:
+      architecture: amd64
+      domain:
+        devices:
+          disks:
+            - disk:
+                bus: virtio
+              name: root
+            - disk:
+                bus: virtio
+              name: cloudinit
+          interfaces:
+            - masquerade: {}
+              name: default
+            - name: storage
+              bridge: {}
+        firmware:
+          serial: b9376217-1207-467c-956e-0d50e4007da8
+          uuid: f8411f65-3d15-4888-be83-1b711e5efd87
+        machine:
+          type: q35
+        resources: {}
+      evictionStrategy: LiveMigrate
+      networks:
+        - name: default
+          pod: {}
+        - name: storage
+          multus:
+            networkName: net/storage-vlan
+      nodeSelector:
+        kubernetes.io/hostname: lon-wrk1
+      volumes:
+        - dataVolume:
+            name: kv-ubuntu-test-root
+          name: root
+        - cloudInitNoCloud:
+            secretRef:
+              name: tailscale-vm-cloudinit
+          name: cloudinit
+  instancetype:
+    name: u1.large
+  preference:
+    name: ubuntu
+status:
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: PodNotExists
+      message: virt-launcher pod has not yet been scheduled
+      lastTransitionTime: "2025-12-31T11:00:00Z"
+    - type: PodScheduled
+      status: "False"
+      reason: Unschedulable
+      message: '0/6 nodes are available: 3 Insufficient memory, 3 node(s) didnt match Pod nodeSelector.'
+      lastTransitionTime: "2025-12-31T11:00:00Z"
+  created: true
+  desiredGeneration: 1
+  observedGeneration: 1
+  printableStatus: ErrorUnschedulable
+  ready: false
+  runStrategy: Always

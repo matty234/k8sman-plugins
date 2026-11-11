@@ -1,0 +1,90 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  annotations:
+    kubevirt.io/latest-observed-api-version: v1
+    kubevirt.io/storage-observed-api-version: v1
+  creationTimestamp: "2026-11-11T15:33:02Z"
+  finalizers:
+    - kubevirt.io/virtualMachineControllerFinalize
+  generation: 2
+  name: kv-smoketest
+  namespace: bioinformatics
+  uid: b53a33ae-e61d-412b-a50d-901b9ff29f88
+spec:
+  dataVolumeTemplates:
+    - metadata:
+        name: kv-smoketest-root
+      spec:
+        source:
+          registry:
+            url: docker://quay.io/kubevirt/cirros-container-disk-demo:v1.9.1
+        storage:
+          resources:
+            requests:
+              storage: 1Gi
+          storageClassName: rook-ceph-block-ssd
+  runStrategy: Halted
+  template:
+    metadata:
+      annotations:
+        kubevirt.io/pci-topology-version: v3
+    spec:
+      architecture: amd64
+      domain:
+        cpu:
+          cores: 1
+        devices:
+          disks:
+            - disk:
+                bus: virtio
+              name: root
+            - disk:
+                bus: virtio
+              name: cloudinit
+          interfaces:
+            - masquerade: {}
+              name: default
+        firmware:
+          serial: 1b69b654-9e05-45bf-9d09-08d299b4443d
+          uuid: 7adc2898-1812-42a5-a2c3-45815866336f
+        machine:
+          type: q35
+        memory:
+          guest: 256Mi
+        resources: {}
+      evictionStrategy: LiveMigrate
+      networks:
+        - name: default
+          pod: {}
+      nodeSelector:
+        kubernetes.io/hostname: lon-wrk1
+      volumes:
+        - dataVolume:
+            name: kv-smoketest-root
+          name: root
+        - cloudInitNoCloud:
+            userData: |-
+              #cloud-config
+              hostname: smoke
+          name: cloudinit
+status:
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: VMINotExists
+      message: VMI does not exist
+      lastTransitionTime: "2025-12-31T09:00:00Z"
+  created: false
+  desiredGeneration: 2
+  observedGeneration: 2
+  printableStatus: Stopped
+  ready: false
+  runStrategy: Halted
+  volumeSnapshotStatuses:
+    - enabled: false
+      name: root
+      reason: 'No VolumeSnapshotClass: Volume snapshots are not configured for this StorageClass [rook-ceph-block-ssd] [root]'
+    - enabled: false
+      name: cloudinit
+      reason: Snapshot is not supported for this volumeSource type [cloudinit]

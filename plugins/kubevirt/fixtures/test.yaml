@@ -1,0 +1,15 @@
+# Settings for `k8sman-server plugin test`.
+now: 2026-01-01T00:00:00Z
+context: demo
+readOnly: false
+metrics:
+  'sum(rate(kubevirt_vmi_cpu_usage_seconds_total{namespace="bioinformatics", name="kv-ubuntu-test"}[5m]))':
+    - {labels: {}, value: 0.35}
+  'sum(kubevirt_vmi_memory_resident_bytes{namespace="bioinformatics", name="kv-ubuntu-test"})':
+    - {labels: {}, value: 1504645120}
+  'sum(kubevirt_vmi_memory_domain_bytes{namespace="bioinformatics", name="kv-ubuntu-test"})':
+    - {labels: {}, value: 4294967296}
+  'sum(rate(kubevirt_vmi_network_receive_bytes_total{namespace="bioinformatics", name="kv-ubuntu-test"}[5m]))':
+    - {labels: {}, value: 20480}
+  'sum(rate(kubevirt_vmi_network_transmit_bytes_total{namespace="bioinformatics", name="kv-ubuntu-test"}[5m]))':
+    - {labels: {}, value: 5120}

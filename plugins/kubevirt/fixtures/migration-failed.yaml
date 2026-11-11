@@ -1,0 +1,20 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstanceMigration
+metadata:
+  name: kubevirt-migrate-vm-x7k2p
+  namespace: bioinformatics
+  creationTimestamp: "2025-12-31T23:50:00Z"
+spec:
+  vmiName: kv-ubuntu-test
+status:
+  phase: Failed
+  migrationState:
+    sourceNode: lon-wrk1
+    targetNode: lon-wrk2
+    mode: PreCopy
+    startTimestamp: "2025-12-31T23:50:05Z"
+    endTimestamp: "2025-12-31T23:55:05Z"
+    completed: false
+    failed: true
+    failureReason: "migration timed out after 150 seconds per GiB of data"
+  conditions: []

@@ -7,8 +7,8 @@ Kubernetes CRD, with no code. Browse them at
 <https://matty234.github.io/k8sman-plugins/index.json>.
 
 Included: `karpenter`, `flux`, `crossplane`, `cloudnative-pg`,
-`external-secrets`, `cert-manager` and `kyverno` (the last three were bundled
-with k8sman up to 0.2.16).
+`external-secrets`, `cert-manager`, `kyverno` (these three were bundled
+with k8sman up to 0.2.16) and `kubevirt`.
 
 ## Submitting a plugin
 

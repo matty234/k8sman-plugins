@@ -1,0 +1,167 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kubevirt.io/VirtualMachineInstance bioinformatics/kv-ubuntu-test
+columns:
+  - name: Phase
+    value: Running
+  - name: Node
+    value: lon-wrk1
+  - name: IP
+    value: 10.40.4.41
+  - name: Ready
+    value: true
+  - name: Live-migratable
+    value: true
+panel:
+  refresh: 5
+  sections:
+    - badge:
+        severity: ok
+        text: Running
+      blocks:
+        - severity: info
+          text: 'No guest agent reported: guest OS, hostname and in-guest addresses are unknown.'
+          type: message
+        - items:
+            - severity: ok
+              text: Ready
+            - severity: info
+              text: Live migratable
+          type: badges
+        - items:
+            - label: VirtualMachine
+              link:
+                group: kubevirt.io
+                kind: VirtualMachine
+                name: kv-ubuntu-test
+                namespace: bioinformatics
+              type: text
+              value: kv-ubuntu-test
+            - label: Phase
+              type: status
+              value: Running
+            - label: Node
+              link:
+                group: ""
+                kind: Node
+                name: lon-wrk1
+                namespace: bioinformatics
+              type: text
+              value: lon-wrk1
+            - label: vCPUs
+              type: text
+              value: "2"
+            - label: Memory
+              type: text
+              value: 4Gi
+            - label: Machine type
+              mono: true
+              type: text
+              value: pc-q35-rhel9.8.0
+            - label: QoS class
+              type: text
+              value: Burstable
+            - label: Launcher image
+              mono: true
+              type: text
+              value: quay.io/kubevirt/virt-launcher:v1.9.1
+            - label: Guest OS
+              type: text
+              value: unknown (no guest agent)
+          type: fields
+        - conditions:
+            - lastProbeTime: null
+              lastTransitionTime: "2026-11-11T16:27:13Z"
+              status: "True"
+              type: Ready
+            - lastProbeTime: null
+              lastTransitionTime: null
+              message: All of the VMI's DVs are bound and ready
+              reason: AllDVsReady
+              status: "True"
+              type: DataVolumesReady
+            - lastProbeTime: null
+              lastTransitionTime: null
+              status: "True"
+              type: LiveMigratable
+            - lastProbeTime: null
+              lastTransitionTime: null
+              status: "True"
+              type: StorageLiveMigratable
+          type: conditions
+      icon: memory
+      title: Instance
+    - blocks:
+        - columns:
+            - mono: true
+              name: Interface
+              type: text
+            - mono: true
+              name: IP addresses
+              type: text
+            - mono: true
+              name: MAC
+              type: text
+            - name: Link
+              type: text
+            - name: Source
+              type: text
+          limit: 20
+          rows:
+            - - value: default
+              - value: 10.40.4.41, 2a02:df9:f:104::16d2
+              - value: 32:88:37:1f:ed:64
+              - value: up
+              - value: domain
+          total: 1
+          type: table
+      icon: lan
+      summary: "1"
+      title: Interfaces
+    - blocks:
+        - columns:
+            - mono: true
+              name: Pod
+              type: text
+            - name: Phase
+              type: status
+            - name: Node
+              type: text
+            - name: Age
+              type: age
+          limit: 20
+          rows:
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: virt-launcher-kv-ubuntu-test-8gbkw
+                  namespace: bioinformatics
+                value: virt-launcher-kv-ubuntu-test-8gbkw
+              - value: Running
+              - value: lon-wrk1
+              - value: "2026-11-11T16:27:03Z"
+          total: 1
+          type: table
+      icon: apps
+      summary: "1"
+      title: Launcher pod
+    - blocks:
+        - format: number
+          label: CPU (vCPUs in use, 5m rate)
+          max: 2
+          type: bar
+          value: 0.35
+        - format: quantity
+          label: Memory (resident set of the guest)
+          max: 4.294967296e+09
+          type: bar
+          value: 1.50464512e+09
+        - items:
+            - label: Network receive
+              type: text
+              value: 20 KiB/s
+            - label: Network transmit
+              type: text
+              value: 5 KiB/s
+          type: fields
+      icon: speed
+      title: Usage

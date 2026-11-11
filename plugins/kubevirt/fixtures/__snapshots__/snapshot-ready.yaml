@@ -1,0 +1,56 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: snapshot.kubevirt.io/VirtualMachineSnapshot bioinformatics/kv-ubuntu-test-before-upgrade
+columns:
+  - name: Phase
+    value: Succeeded
+  - name: Ready
+    value: true
+  - name: Source
+    value: kv-ubuntu-test
+panel:
+  sections:
+    - badge:
+        severity: ok
+        text: Succeeded
+      blocks:
+        - items:
+            - label: Source
+              link:
+                group: kubevirt.io
+                kind: VirtualMachine
+                name: kv-ubuntu-test
+                namespace: bioinformatics
+              type: text
+              value: VirtualMachine/kv-ubuntu-test
+            - label: Phase
+              type: status
+              value: Succeeded
+            - label: Ready to use
+              type: bool
+              value: true
+            - label: Taken
+              type: age
+              value: "2025-12-31T10:00:30Z"
+            - label: Indications
+              type: text
+              value: Online, NoGuestAgent
+            - label: Deletion policy
+              type: text
+              value: Delete
+            - label: Content
+              mono: true
+              type: text
+              value: vmsnapshot-content-7d1c0f2a
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-31T10:00:30Z"
+              reason: Operation complete
+              status: "False"
+              type: Progressing
+            - lastTransitionTime: "2025-12-31T10:00:30Z"
+              reason: Operation complete
+              status: "True"
+              type: Ready
+          type: conditions
+      icon: backup
+      title: Snapshot

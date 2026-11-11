@@ -1,0 +1,134 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kubevirt.io/VirtualMachine bioinformatics/kv-smoketest
+columns:
+  - name: Status
+    value: Stopped
+  - name: Ready
+    value: false
+  - name: Run strategy
+    value: Halted
+  - name: Resources
+    value: 1 vCPU / 256Mi
+panel:
+  refresh: 5
+  sections:
+    - badge:
+        severity: neutral
+        text: Stopped
+      blocks:
+        - items:
+            - severity: neutral
+              text: Not ready
+          type: badges
+        - items:
+            - label: Status
+              severity: neutral
+              type: status
+              value: Stopped
+            - label: Run strategy
+              type: text
+              value: Halted
+            - label: Created (VMI exists)
+              type: bool
+              value: false
+            - label: Eviction strategy
+              type: text
+              value: LiveMigrate
+            - label: Machine type
+              mono: true
+              type: text
+              value: q35
+            - label: Architecture
+              type: text
+              value: amd64
+            - label: Resources
+              type: text
+              value: 1 vCPU / 256Mi
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-31T09:00:00Z"
+              message: VMI does not exist
+              reason: VMINotExists
+              status: "False"
+              type: Ready
+          type: conditions
+      icon: developer_board
+      title: Virtual machine
+    - blocks:
+        - columns:
+            - mono: true
+              name: Disk
+              type: text
+            - name: Type
+              type: text
+            - name: Bus
+              type: text
+            - mono: true
+              name: Source
+              type: text
+            - name: Status
+              type: status
+          limit: 20
+          rows:
+            - - value: root
+              - value: dataVolume
+              - value: virtio
+              - value: kv-smoketest-root
+              - value: ""
+            - - value: cloudinit
+              - value: cloudInitNoCloud
+              - value: virtio
+              - value: inline
+              - value: ""
+          total: 2
+          type: table
+        - items:
+            - group: cdi.kubevirt.io
+              kind: DataVolume
+              name: kv-smoketest-root
+              namespace: bioinformatics
+          type: links
+      icon: storage
+      summary: "2"
+      title: Disks and volumes
+    - blocks:
+        - columns:
+            - mono: true
+              name: Interface
+              type: text
+            - name: Network
+              type: text
+            - name: Binding
+              type: text
+            - name: Model
+              type: text
+            - mono: true
+              name: IP addresses
+              type: text
+            - mono: true
+              name: MAC
+              type: text
+          limit: 20
+          rows:
+            - - value: default
+              - value: pod network
+              - value: masquerade
+              - value: ""
+              - value: ""
+              - value: ""
+          total: 1
+          type: table
+      icon: lan
+      summary: "1"
+      title: Networks
+actions:
+  - body:
+      spec:
+        runStrategy: Always
+    dangerous: false
+    icon: play_arrow
+    id: start
+    label: Start
+    patchType: merge
+    type: patch
+status: 'VMs: 1 · running: 0 · paused: 0 · error: 0'

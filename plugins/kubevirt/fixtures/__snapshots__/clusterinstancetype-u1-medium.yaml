@@ -1,0 +1,28 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: instancetype.kubevirt.io/VirtualMachineClusterInstancetype u1.medium
+columns:
+  - name: CPU
+    value: 1
+  - name: Memory
+    value: 4Gi
+  - name: Class
+    value: general.purpose
+panel:
+  sections:
+    - blocks:
+        - items:
+            - label: CPU (vCPUs)
+              type: text
+              value: "1"
+            - label: Memory
+              type: text
+              value: 4Gi
+            - label: Class
+              type: text
+              value: general.purpose
+            - label: Dedicated CPUs
+              type: bool
+              value: false
+          type: fields
+      icon: tune
+      title: Instance type

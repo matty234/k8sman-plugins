@@ -1,0 +1,59 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kubevirt.io/VirtualMachineInstanceMigration bioinformatics/kubevirt-migrate-vm-x7k2p
+columns:
+  - name: Phase
+    value: Failed
+  - name: VMI
+    value: kv-ubuntu-test
+  - name: Source
+    value: lon-wrk1
+  - name: Target
+    value: lon-wrk2
+panel:
+  sections:
+    - badge:
+        severity: error
+        text: Failed
+      blocks:
+        - severity: error
+          text: migration timed out after 150 seconds per GiB of data
+          title: Migration failed
+          type: message
+        - items:
+            - label: VirtualMachineInstance
+              link:
+                group: kubevirt.io
+                kind: VirtualMachineInstance
+                name: kv-ubuntu-test
+                namespace: bioinformatics
+              type: text
+              value: kv-ubuntu-test
+            - label: Phase
+              type: status
+              value: Failed
+            - label: Source node
+              type: text
+              value: lon-wrk1
+            - label: Target node
+              type: text
+              value: lon-wrk2
+            - label: Mode
+              type: text
+              value: PreCopy
+            - label: Started
+              type: age
+              value: "2025-12-31T23:50:05Z"
+            - label: Ended
+              type: age
+              value: "2025-12-31T23:55:05Z"
+          type: fields
+        - conditions: []
+          type: conditions
+      icon: sync_alt
+      title: Migration
+alerts:
+  - id: migration-failed
+    message: 'Migration of kv-ubuntu-test failed: migration timed out after 150 seconds per GiB of data'
+    section: custom
+    severity: critical
+    since: "2025-12-31T23:50:00Z"

@@ -1,0 +1,183 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: kubevirt.io/VirtualMachine bioinformatics/gpu-ubuntu
+columns:
+  - name: Status
+    value: ErrorUnschedulable
+  - name: Ready
+    value: false
+  - name: Run strategy
+    value: Always
+  - name: Resources
+    value: u1.large
+panel:
+  refresh: 5
+  sections:
+    - badge:
+        severity: error
+        text: ErrorUnschedulable
+      blocks:
+        - severity: error
+          text: virt-launcher pod has not yet been scheduled
+          title: ErrorUnschedulable
+          type: message
+        - items:
+            - severity: neutral
+              text: Not ready
+          type: badges
+        - items:
+            - label: Status
+              severity: error
+              type: status
+              value: ErrorUnschedulable
+            - label: Run strategy
+              type: text
+              value: Always
+            - label: Created (VMI exists)
+              type: bool
+              value: true
+            - label: Eviction strategy
+              type: text
+              value: LiveMigrate
+            - label: Machine type
+              mono: true
+              type: text
+              value: q35
+            - label: Architecture
+              type: text
+              value: amd64
+            - label: Resources
+              type: text
+              value: u1.large
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-31T11:00:00Z"
+              message: virt-launcher pod has not yet been scheduled
+              reason: PodNotExists
+              status: "False"
+              type: Ready
+            - lastTransitionTime: "2025-12-31T11:00:00Z"
+              message: '0/6 nodes are available: 3 Insufficient memory, 3 node(s) didnt match Pod nodeSelector.'
+              reason: Unschedulable
+              status: "False"
+              type: PodScheduled
+          type: conditions
+      icon: developer_board
+      title: Virtual machine
+    - blocks:
+        - columns:
+            - mono: true
+              name: Disk
+              type: text
+            - name: Type
+              type: text
+            - name: Bus
+              type: text
+            - mono: true
+              name: Source
+              type: text
+            - name: Status
+              type: status
+          limit: 20
+          rows:
+            - - value: root
+              - value: dataVolume
+              - value: virtio
+              - value: kv-ubuntu-test-root
+              - value: ""
+            - - value: cloudinit
+              - value: cloudInitNoCloud
+              - value: virtio
+              - value: secret tailscale-vm-cloudinit
+              - value: ""
+          total: 2
+          type: table
+        - items:
+            - group: cdi.kubevirt.io
+              kind: DataVolume
+              name: kv-ubuntu-test-root
+              namespace: bioinformatics
+          type: links
+      icon: storage
+      summary: "2"
+      title: Disks and volumes
+    - blocks:
+        - columns:
+            - mono: true
+              name: Interface
+              type: text
+            - name: Network
+              type: text
+            - name: Binding
+              type: text
+            - name: Model
+              type: text
+            - mono: true
+              name: IP addresses
+              type: text
+            - mono: true
+              name: MAC
+              type: text
+          limit: 20
+          rows:
+            - - value: default
+              - value: pod network
+              - value: masquerade
+              - value: ""
+              - value: ""
+              - value: ""
+            - - value: storage
+              - value: net/storage-vlan
+              - value: bridge
+              - value: ""
+              - value: ""
+              - value: ""
+          total: 2
+          type: table
+        - items:
+            - group: k8s.cni.cncf.io
+              kind: NetworkAttachmentDefinition
+              name: storage-vlan
+              namespace: net
+          type: links
+      icon: lan
+      summary: "2"
+      title: Networks
+    - blocks:
+        - items:
+            - label: Instance type
+              link:
+                group: instancetype.kubevirt.io
+                kind: VirtualMachineClusterInstancetype
+                name: u1.large
+                namespace: bioinformatics
+              type: text
+              value: u1.large (VirtualMachineClusterInstancetype)
+            - label: Preference
+              link:
+                group: instancetype.kubevirt.io
+                kind: VirtualMachineClusterPreference
+                name: ubuntu
+                namespace: bioinformatics
+              type: text
+              value: ubuntu (VirtualMachineClusterPreference)
+          type: fields
+      icon: tune
+      title: Instance type and preference
+actions:
+  - body:
+      spec:
+        runStrategy: Halted
+    dangerous: true
+    icon: stop
+    id: stop
+    label: Stop
+    message: The guest is powered off (the VirtualMachineInstance is deleted) and the VM keeps its disks.
+    patchType: merge
+    type: patch
+alerts:
+  - id: vm-error
+    message: 'ErrorUnschedulable: virt-launcher pod has not yet been scheduled'
+    section: custom
+    severity: critical
+    since: "2026-11-11T16:25:25Z"
+status: 'VMs: 1 · running: 0 · paused: 0 · error: 1 (critical)'

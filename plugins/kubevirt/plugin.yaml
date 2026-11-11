@@ -1,0 +1,1156 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
+# KubeVirt (kubevirt.io) and CDI: virtual machines, their instances, disks and
+# networks, migrations, DataVolumes, snapshots, restores, instance types and
+# preferences. Start and Stop are patch actions; the rest of the VM actions
+# run `virtctl` on your computer (see the "virtctl" block of VirtualMachine's
+# actions, written to be replaced by native subresource actions).
+# Without a cluster: k8sman-server plugin test plugins/kubevirt
+apiVersion: k8sman.dev/v1
+id: kubevirt
+name: KubeVirt
+version: 0.1.0
+description: Virtual machines on Kubernetes. Status, disks, networks, instances, migrations, DataVolumes, snapshots and instance types, with start/stop, virtctl actions, templates and alerts.
+authors: [k8sman community]
+homepage: https://kubevirt.io
+minAppVersion: "0.2.19"
+
+permissions:
+  read:
+    - kubevirt.io/VirtualMachine
+    - kubevirt.io/VirtualMachineInstance
+    - kubevirt.io/VirtualMachineInstanceMigration
+    - cdi.kubevirt.io/DataVolume
+    - snapshot.kubevirt.io/VirtualMachineSnapshot
+    - snapshot.kubevirt.io/VirtualMachineRestore
+    - instancetype.kubevirt.io/VirtualMachineClusterInstancetype
+    - instancetype.kubevirt.io/VirtualMachineInstancetype
+    - instancetype.kubevirt.io/VirtualMachineClusterPreference
+    - instancetype.kubevirt.io/VirtualMachinePreference
+    - /Pod
+  patch:
+    - kubevirt.io/VirtualMachine
+  commands: [virtctl]
+  prometheus: true
+
+nav:
+  title: KubeVirt
+  kinds:
+    - kubevirt.io/VirtualMachine
+    - kubevirt.io/VirtualMachineInstance
+    - cdi.kubevirt.io/DataVolume
+    - kubevirt.io/VirtualMachineInstanceMigration
+    - snapshot.kubevirt.io/VirtualMachineSnapshot
+    - snapshot.kubevirt.io/VirtualMachineRestore
+    - instancetype.kubevirt.io/VirtualMachineClusterInstancetype
+    - instancetype.kubevirt.io/VirtualMachineInstancetype
+    - instancetype.kubevirt.io/VirtualMachineClusterPreference
+    - instancetype.kubevirt.io/VirtualMachinePreference
+
+kinds:
+  # ---------------------------------------------------------------- VirtualMachine
+  kubevirt.io/VirtualMachine:
+    icon: developer_board
+    variables:
+      status: object.?status.?printableStatus.orValue("")
+      # spec.runStrategy, or the legacy spec.running as Always / Halted.
+      strategy: 'object.spec.?runStrategy.orValue(object.spec.?running.hasValue() ? (object.spec.running ? "Always" : "Halted") : "")'
+      ready: conditionTrue(object, "Ready")
+      shouldRun: 'variables.strategy in ["Always", "RerunOnFailure", "Once"]'
+      isError: 'variables.status.startsWith("Error") || variables.status in ["ErrImagePull", "ImagePullBackOff", "CrashLoopBackOff", "DataVolumeError"]'
+      severity: >-
+        variables.isError ? "error" :
+        variables.status == "Running" ? "ok" :
+        variables.status in ["Paused", "Stopping", "Terminating", "WaitingForVolumeBinding", "Unknown"] ? "warning" :
+        variables.status == "Stopped" ? "neutral" : "info"
+      instancetype: object.spec.?instancetype.?name.orValue("")
+      # vCPUs of the template when it sets cpu itself (an instance type sets them otherwise).
+      vcpu: >-
+        double(int(object.spec.template.spec.domain.?cpu.?cores.orValue(1)) *
+        int(object.spec.template.spec.domain.?cpu.?sockets.orValue(1)) *
+        int(object.spec.template.spec.domain.?cpu.?threads.orValue(1)))
+      memory: 'object.spec.template.spec.domain.?memory.?guest.orValue(object.spec.template.spec.domain.?resources.?requests.?memory.orValue(""))'
+      # One row per volume, with the disk's bus and what it points at.
+      volumes: >-
+        object.spec.template.spec.?volumes.orValue([]).map(v, {
+          "name": v.name,
+          "type": v.map(k, k).filter(k, k != "name").join(", "),
+          "bus": object.spec.template.spec.domain.devices.?disks.orValue([]).filter(d, d.name == v.name).map(d, d.?disk.?bus.orValue(d.?cdrom.?bus.orValue(d.?lun.?bus.orValue("")))).join(""),
+          "source": v.?containerDisk.hasValue() ? v.containerDisk.image :
+                    v.?dataVolume.hasValue() ? v.dataVolume.name :
+                    v.?persistentVolumeClaim.hasValue() ? v.persistentVolumeClaim.claimName :
+                    v.?cloudInitNoCloud.hasValue() ? (v.cloudInitNoCloud.?secretRef.hasValue() ? "secret " + v.cloudInitNoCloud.secretRef.name : "inline") :
+                    v.?cloudInitConfigDrive.hasValue() ? (v.cloudInitConfigDrive.?secretRef.hasValue() ? "secret " + v.cloudInitConfigDrive.secretRef.name : "inline") :
+                    v.?configMap.hasValue() ? v.configMap.name :
+                    v.?secret.hasValue() ? v.secret.secretName :
+                    v.?emptyDisk.hasValue() ? string(v.emptyDisk.?capacity.orValue("")) : ""
+        })
+      dataVolumeNames: 'object.spec.template.spec.?volumes.orValue([]).filter(v, v.?dataVolume.hasValue()).map(v, v.dataVolume.name)'
+      pvcRefs: 'object.spec.template.spec.?volumes.orValue([]).filter(v, v.?persistentVolumeClaim.hasValue()).map(v, ref("", "PersistentVolumeClaim", ns, v.persistentVolumeClaim.claimName))'
+      dvRefs: 'variables.dataVolumeNames.map(n, ref("cdi.kubevirt.io", "DataVolume", ns, n))'
+      interfaces: >-
+        object.spec.template.spec.domain.devices.?interfaces.orValue([]).map(i, {
+          "name": i.name,
+          "binding": i.?masquerade.hasValue() ? "masquerade" : i.?bridge.hasValue() ? "bridge" :
+                     i.?sriov.hasValue() ? "sriov" : i.?passt.hasValue() ? "passt" : i.?slirp.hasValue() ? "slirp" : "",
+          "model": i.?model.orValue(""),
+          "network": object.spec.template.spec.?networks.orValue([]).filter(n, n.name == i.name).map(n, n.?pod.hasValue() ? "pod network" : n.?multus.hasValue() ? n.multus.networkName : "").join("")
+        })
+      nadRefs: >-
+        object.spec.template.spec.?networks.orValue([]).filter(n, n.?multus.hasValue()).map(n,
+        n.multus.networkName.contains("/")
+          ? ref("k8s.cni.cncf.io", "NetworkAttachmentDefinition", n.multus.networkName.split("/")[0], n.multus.networkName.split("/")[1])
+          : ref("k8s.cni.cncf.io", "NetworkAttachmentDefinition", ns, n.multus.networkName))
+      instancetypeRef: >-
+        ref("instancetype.kubevirt.io", object.spec.instancetype.?kind.orValue("VirtualMachineClusterInstancetype"),
+        ns, object.spec.instancetype.name)
+      preferenceRef: >-
+        ref("instancetype.kubevirt.io", object.spec.preference.?kind.orValue("VirtualMachineClusterPreference"),
+        ns, object.spec.preference.name)
+    columns:
+      - name: Status
+        type: status
+        value: variables.status
+        description: status.printableStatus
+      - name: Ready
+        type: bool
+        value: variables.ready
+      - name: Run strategy
+        value: variables.strategy
+        description: spec.runStrategy (or spec.running, shown as Always / Halted)
+      - name: Resources
+        description: The instance type, else the template's vCPUs and memory
+        value: >-
+          variables.instancetype != "" ? variables.instancetype :
+          [object.spec.template.spec.domain.?cpu.hasValue() ? string(int(variables.vcpu)) + " vCPU" : "", variables.memory].filter(s, s != "").join(" / ")
+    related:
+      vmi:
+        kind: kubevirt.io/VirtualMachineInstance
+        name: object.metadata.name
+      pods:
+        kind: /Pod
+        selector: '{"vm.kubevirt.io/name": object.metadata.name, "kubevirt.io": "virt-launcher"}'
+      dvs:
+        kind: cdi.kubevirt.io/DataVolume
+        filter: item.metadata.name in variables.dataVolumeNames
+        when: size(variables.dataVolumeNames) > 0
+      snapshots:
+        kind: snapshot.kubevirt.io/VirtualMachineSnapshot
+        filter: item.spec.?source.?name.orValue("") == object.metadata.name && item.spec.?source.?kind.orValue("VirtualMachine") == "VirtualMachine"
+    metrics: &vmiMetrics
+      cpu:
+        query: '"sum(rate(kubevirt_vmi_cpu_usage_seconds_total{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "}[5m]))"'
+      memory:
+        query: '"sum(kubevirt_vmi_memory_resident_bytes{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "})"'
+      memoryTotal:
+        query: '"sum(kubevirt_vmi_memory_domain_bytes{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "})"'
+      rx:
+        query: '"sum(rate(kubevirt_vmi_network_receive_bytes_total{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "}[5m]))"'
+      tx:
+        query: '"sum(rate(kubevirt_vmi_network_transmit_bytes_total{namespace=" + promQuote(ns) + ", name=" + promQuote(object.metadata.name) + "}[5m]))"'
+    panel:
+      generic: collapse
+      sections:
+        - title: Virtual machine
+          icon: developer_board
+          badge:
+            text: variables.status
+            severity: variables.severity
+          blocks:
+            - type: message
+              severity: error
+              when: variables.isError
+              title: variables.status
+              text: 'condition(object, "Ready").hasValue() ? string(condition(object, "Ready").value().?message.orValue("")) : ""'
+            - type: message
+              severity: warning
+              when: 'variables.shouldRun && !variables.ready && !variables.isError && variables.status != "Paused" && condition(object, "Ready").hasValue()'
+              title: '"Should be running, but is not ready"'
+              text: 'string(condition(object, "Ready").value().?message.orValue(variables.status))'
+            - type: badges
+              items:
+                - text: 'variables.ready ? "Ready" : "Not ready"'
+                  severity: 'variables.ready ? "ok" : "neutral"'
+                - text: '"Paused"'
+                  severity: '"warning"'
+                  when: 'variables.status == "Paused" || conditionTrue(object, "Paused")'
+                - text: '"Live migratable"'
+                  severity: '"info"'
+                  when: 'conditionTrue(object, "LiveMigratable")'
+            - type: fields
+              items:
+                - label: Status
+                  type: status
+                  value: variables.status
+                  severity: variables.severity
+                - label: Run strategy
+                  value: variables.strategy
+                - label: Created (VMI exists)
+                  type: bool
+                  value: 'object.status.?created.orValue(false)'
+                - label: Eviction strategy
+                  value: object.spec.template.spec.?evictionStrategy
+                - label: Machine type
+                  value: object.spec.template.spec.domain.?machine.?type
+                  mono: true
+                - label: Architecture
+                  value: object.spec.template.spec.?architecture
+                - label: Resources
+                  value: >-
+                    [variables.instancetype,
+                     object.spec.template.spec.domain.?cpu.hasValue() ? string(int(variables.vcpu)) + " vCPU" : "",
+                     variables.memory].filter(s, s != "").join(" / ")
+            - type: table
+              when: size(object.status.?stateChangeRequests.orValue([])) > 0
+              rows: 'object.status.stateChangeRequests'
+              columns:
+                - {name: Pending request, value: item.action}
+                - {name: Target, value: 'item.?data.?name.orValue(item.?data.?uid.orValue(""))'}
+            - type: conditions
+
+        - title: Instance
+          icon: memory
+          when: has(related.vmi)
+          summary: string(related.vmi.status.?phase.orValue(""))
+          blocks:
+            - type: fields
+              items:
+                - label: VirtualMachineInstance
+                  value: related.vmi.metadata.name
+                  link: ref(related.vmi)
+                - label: Phase
+                  type: status
+                  value: related.vmi.status.?phase
+                - label: Node
+                  value: related.vmi.status.?nodeName
+                  link: 'ref("", "Node", related.vmi.status.nodeName)'
+                  when: related.vmi.status.?nodeName.hasValue()
+                - label: IP addresses
+                  value: 'related.vmi.status.?interfaces.orValue([]).map(i, i.?ipAddresses.orValue([])).flatten().join(", ")'
+                  mono: true
+                  copy: true
+                - label: Guest OS
+                  value: >-
+                    related.vmi.status.?guestOSInfo.?name.hasValue()
+                      ? related.vmi.status.guestOSInfo.name + " " + related.vmi.status.guestOSInfo.?version.orValue("")
+                      : "unknown (no guest agent)"
+                - label: Live migration
+                  value: >-
+                    related.vmi.status.?migrationState.hasValue()
+                      ? (related.vmi.status.migrationState.?completed.orValue(false) ? "completed"
+                         : related.vmi.status.migrationState.?failed.orValue(false) ? "failed: " + related.vmi.status.migrationState.?failureReason.orValue("")
+                         : "in progress: " + related.vmi.status.migrationState.?sourceNode.orValue("?") + " to " + related.vmi.status.migrationState.?targetNode.orValue("?"))
+                      : ""
+
+        - title: Launcher pod
+          icon: apps
+          when: size(related.pods) > 0
+          summary: string(size(related.pods))
+          blocks:
+            - type: table
+              rows: related.pods
+              columns:
+                - {name: Pod, value: item.metadata.name, link: ref(item), mono: true}
+                - {name: Phase, type: status, value: 'item.status.?phase.orValue("")'}
+                - {name: Node, value: 'item.spec.?nodeName.orValue("")'}
+                - {name: Age, type: age, value: item.metadata.creationTimestamp}
+
+        - title: Disks and volumes
+          icon: storage
+          when: size(variables.volumes) > 0
+          summary: string(size(variables.volumes))
+          blocks:
+            - type: table
+              rows: variables.volumes
+              columns:
+                - {name: Disk, value: item.name, mono: true}
+                - {name: Type, value: item.type}
+                - {name: Bus, value: item.bus}
+                - {name: Source, value: item.source, mono: true}
+                - name: Status
+                  type: status
+                  value: >-
+                    item.type != "dataVolume" ? "" :
+                    related.dvs.filter(d, d.metadata.name == item.source).map(d, d.?status.?phase.orValue("") +
+                      (d.?status.?progress.orValue("N/A") in ["N/A", ""] ? "" : " " + d.status.progress)).join("")
+            - type: links
+              when: size(variables.dvRefs) + size(variables.pvcRefs) > 0
+              items: variables.dvRefs + variables.pvcRefs
+
+        - title: Networks
+          icon: lan
+          when: size(variables.interfaces) > 0
+          summary: string(size(variables.interfaces))
+          blocks:
+            - type: table
+              rows: variables.interfaces
+              columns:
+                - {name: Interface, value: item.name, mono: true}
+                - {name: Network, value: item.network}
+                - {name: Binding, value: item.binding}
+                - {name: Model, value: item.model}
+                - name: IP addresses
+                  mono: true
+                  value: 'related.?vmi.?status.?interfaces.orValue([]).filter(x, x.name == item.name).map(x, x.?ipAddresses.orValue([]).join(", ")).join("")'
+                - name: MAC
+                  mono: true
+                  value: 'related.?vmi.?status.?interfaces.orValue([]).filter(x, x.name == item.name).map(x, x.?mac.orValue("")).join("")'
+            - type: links
+              when: size(variables.nadRefs) > 0
+              items: variables.nadRefs
+
+        - title: Instance type and preference
+          icon: tune
+          when: 'object.spec.?instancetype.hasValue() || object.spec.?preference.hasValue()'
+          blocks:
+            - type: fields
+              items:
+                - label: Instance type
+                  value: 'object.spec.instancetype.name + " (" + object.spec.instancetype.?kind.orValue("VirtualMachineClusterInstancetype") + ")"'
+                  link: variables.instancetypeRef
+                  when: object.spec.?instancetype.hasValue()
+                - label: Preference
+                  value: 'object.spec.preference.name + " (" + object.spec.preference.?kind.orValue("VirtualMachineClusterPreference") + ")"'
+                  link: variables.preferenceRef
+                  when: object.spec.?preference.hasValue()
+
+        - title: Snapshots
+          icon: backup
+          when: size(related.snapshots) > 0
+          summary: string(size(related.snapshots))
+          blocks:
+            - type: table
+              rows: related.snapshots
+              sortBy: Created
+              descending: true
+              columns:
+                - {name: Snapshot, value: item.metadata.name, link: ref(item)}
+                - name: Phase
+                  type: status
+                  value: 'item.status.?phase.orValue("")'
+                - {name: Ready, type: bool, value: 'item.status.?readyToUse.orValue(false)'}
+                - {name: Created, type: age, value: item.metadata.creationTimestamp}
+
+        - title: Usage
+          icon: speed
+          when: size(metrics.cpu) > 0 || size(metrics.memory) > 0
+          blocks:
+            - type: bar
+              label: CPU (vCPUs in use, 5m rate)
+              when: size(metrics.cpu) > 0
+              value: metrics.cpu[0].value
+              max: >-
+                related.?vmi.?status.?currentCPUTopology.hasValue()
+                  ? double(int(related.vmi.status.currentCPUTopology.?cores.orValue(1)) * int(related.vmi.status.currentCPUTopology.?sockets.orValue(1)) * int(related.vmi.status.currentCPUTopology.?threads.orValue(1)))
+                  : variables.vcpu
+              format: number
+            - type: bar
+              label: Memory (resident set of the guest)
+              when: size(metrics.memory) > 0 && size(metrics.memoryTotal) > 0
+              value: metrics.memory[0].value
+              max: metrics.memoryTotal[0].value
+              format: quantity
+            - type: fields
+              items:
+                - label: Network receive
+                  value: 'size(metrics.rx) > 0 ? string(int(metrics.rx[0].value / 1024.0)) + " KiB/s" : ""'
+                - label: Network transmit
+                  value: 'size(metrics.tx) > 0 ? string(int(metrics.tx[0].value / 1024.0)) + " KiB/s" : ""'
+
+    actions:
+      # Patch actions: spec.runStrategy, or the legacy spec.running when that is what the VM uses.
+      - id: start
+        label: Start
+        icon: play_arrow
+        dangerous: false
+        when: 'variables.strategy == "Halted"'
+        patch:
+          type: merge
+          body: 'object.spec.?running.hasValue() ? dyn({"spec": {"running": true}}) : dyn({"spec": {"runStrategy": "Always"}})'
+      - id: stop
+        label: Stop
+        icon: stop
+        dangerous: true
+        message: The guest is powered off (the VirtualMachineInstance is deleted) and the VM keeps its disks.
+        when: 'variables.shouldRun'
+        patch:
+          type: merge
+          body: 'object.spec.?running.hasValue() ? dyn({"spec": {"running": false}}) : dyn({"spec": {"runStrategy": "Halted"}})'
+
+      # ---- virtctl: a stopgap until these are native subresource actions. ----
+      # Each needs virtctl on PATH; $CONTEXT picks the cluster, and the
+      # KUBECONFIG of the app's local shells is inherited.
+      - id: virtctl-restart
+        label: Restart (virtctl)
+        icon: restart_alt
+        dangerous: true
+        when: 'variables.status == "Running"'
+        shell:
+          command: virtctl
+          args: [restart, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+          background: true
+      - id: virtctl-pause
+        label: Pause (virtctl)
+        icon: timer
+        dangerous: false
+        when: 'variables.status == "Running"'
+        shell:
+          command: virtctl
+          args: [pause, vm, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+          background: true
+      - id: virtctl-unpause
+        label: Unpause (virtctl)
+        icon: play_arrow
+        dangerous: false
+        when: 'variables.status == "Paused"'
+        shell:
+          command: virtctl
+          args: [unpause, vm, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+          background: true
+      - id: virtctl-migrate
+        label: Live migrate (virtctl)
+        icon: sync_alt
+        dangerous: false
+        when: 'variables.status == "Running" && conditionTrue(object, "LiveMigratable")'
+        shell:
+          command: virtctl
+          args: [migrate, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+          background: true
+      - id: virtctl-console
+        label: Serial console (virtctl)
+        icon: terminal
+        dangerous: false
+        when: 'variables.status == "Running"'
+        shell:
+          command: virtctl
+          args: [console, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+      - id: virtctl-vnc
+        label: VNC (virtctl)
+        icon: public
+        dangerous: false
+        when: 'variables.status == "Running"'
+        shell:
+          command: virtctl
+          args: [vnc, --context, $CONTEXT, -n, $NAMESPACE, $NAME]
+          background: true
+
+    alerts:
+      - id: vm-not-ready
+        label: VMs not ready
+        severity: warning
+        when: >-
+          variables.shouldRun && !variables.ready && !variables.isError && variables.status != "Paused" &&
+          condition(object, "Ready").hasValue() &&
+          age(condition(object, "Ready").value().?lastTransitionTime.orValue(object.metadata.creationTimestamp)) > duration("5m")
+        message: '"Should be running but is " + (variables.status != "" ? variables.status : "not ready")'
+        since: condition(object, "Ready").value().?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+      - id: vm-error
+        label: VMs in an error state
+        severity: error
+        when: variables.isError
+        message: 'variables.status + ": " + string(condition(object, "Ready").hasValue() ? condition(object, "Ready").value().?message.orValue("") : "")'
+        since: object.metadata.creationTimestamp
+      - id: vm-paused
+        label: VMs paused
+        severity: warning
+        when: 'variables.status == "Paused"'
+        message: '"Paused"'
+    status:
+      label: VMs
+      counts:
+        - label: running
+          severity: info
+          when: 'object.status.?printableStatus.orValue("") == "Running"'
+        - label: paused
+          severity: warning
+          when: 'object.status.?printableStatus.orValue("") == "Paused"'
+        - label: error
+          severity: error
+          when: 'object.status.?printableStatus.orValue("").startsWith("Error") || object.status.?printableStatus.orValue("") in ["ErrImagePull", "ImagePullBackOff", "CrashLoopBackOff", "DataVolumeError"]'
+    templates:
+      - name: VM from a container disk
+        description: Ubuntu 24.04 from a containerDisk, with cloud-init (user and SSH key)
+        yaml: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: ${name:ubuntu-vm}
+            namespace: ${namespace}
+          spec:
+            runStrategy: Always
+            template:
+              spec:
+                domain:
+                  cpu:
+                    cores: ${cores:2}
+                  memory:
+                    guest: ${memory:4Gi}
+                  devices:
+                    disks:
+                      - name: root
+                        disk:
+                          bus: virtio
+                      - name: cloudinit
+                        disk:
+                          bus: virtio
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                networks:
+                  - name: default
+                    pod: {}
+                evictionStrategy: LiveMigrate
+                volumes:
+                  - name: root
+                    containerDisk:
+                      image: ${image:quay.io/containerdisks/ubuntu:24.04}
+                  - name: cloudinit
+                    cloudInitNoCloud:
+                      userData: |
+                        #cloud-config
+                        users:
+                          - name: ${user:ubuntu}
+                            sudo: ALL=(ALL) NOPASSWD:ALL
+                            shell: /bin/bash
+                            ssh_authorized_keys:
+                              - ${sshKey:ssh-ed25519 AAAA... you@host}
+      - name: VM with an imported disk (DataVolumeTemplate)
+        description: A cloud image downloaded over HTTP into a PVC the VM owns
+        yaml: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: ${name:cloud-vm}
+            namespace: ${namespace}
+          spec:
+            runStrategy: Always
+            dataVolumeTemplates:
+              - metadata:
+                  name: ${name:cloud-vm}-root
+                spec:
+                  source:
+                    http:
+                      url: ${url:https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}
+                  storage:
+                    resources:
+                      requests:
+                        storage: ${size:20Gi}
+            template:
+              spec:
+                domain:
+                  cpu:
+                    cores: ${cores:2}
+                  memory:
+                    guest: ${memory:4Gi}
+                  devices:
+                    disks:
+                      - name: root
+                        disk:
+                          bus: virtio
+                      - name: cloudinit
+                        disk:
+                          bus: virtio
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                networks:
+                  - name: default
+                    pod: {}
+                evictionStrategy: LiveMigrate
+                volumes:
+                  - name: root
+                    dataVolume:
+                      name: ${name:cloud-vm}-root
+                  - name: cloudinit
+                    cloudInitNoCloud:
+                      userData: |
+                        #cloud-config
+                        users:
+                          - name: ${user:ubuntu}
+                            sudo: ALL=(ALL) NOPASSWD:ALL
+                            shell: /bin/bash
+                            ssh_authorized_keys:
+                              - ${sshKey:ssh-ed25519 AAAA... you@host}
+
+  # ------------------------------------------------------- VirtualMachineInstance
+  kubevirt.io/VirtualMachineInstance:
+    icon: memory
+    variables:
+      phase: object.?status.?phase.orValue("")
+      ready: conditionTrue(object, "Ready")
+      ownerVM: 'object.metadata.?ownerReferences.orValue([]).filter(o, o.kind == "VirtualMachine").map(o, o.name).join("")'
+      vcpu: >-
+        double(int(object.?status.?currentCPUTopology.?cores.orValue(1)) *
+        int(object.?status.?currentCPUTopology.?sockets.orValue(1)) *
+        int(object.?status.?currentCPUTopology.?threads.orValue(1)))
+      hasAgent: object.?status.?guestOSInfo.?name.hasValue()
+    columns:
+      - name: Phase
+        type: status
+        value: variables.phase
+      - name: Node
+        value: object.?status.?nodeName
+      - name: IP
+        value: 'object.?status.?interfaces.orValue([]).map(i, i.?ipAddress.orValue("")).join("")'
+        description: The first interface's address
+      - name: Ready
+        type: bool
+        value: variables.ready
+      - name: Live-migratable
+        type: bool
+        value: 'conditionTrue(object, "LiveMigratable")'
+    related:
+      pods:
+        kind: /Pod
+        selector: '{"kubevirt.io/created-by": object.metadata.uid}'
+    metrics: *vmiMetrics
+    panel:
+      generic: collapse
+      sections:
+        - title: Instance
+          icon: memory
+          badge:
+            text: variables.phase
+            severity: 'variables.phase == "Running" ? "ok" : variables.phase == "Failed" ? "error" : "info"'
+          blocks:
+            - type: message
+              severity: info
+              when: '!variables.hasAgent && variables.phase == "Running"'
+              text: '"No guest agent reported: guest OS, hostname and in-guest addresses are unknown."'
+            - type: badges
+              items:
+                - text: 'variables.ready ? "Ready" : "Not ready"'
+                  severity: 'variables.ready ? "ok" : "neutral"'
+                - text: '"Live migratable"'
+                  severity: '"info"'
+                  when: 'conditionTrue(object, "LiveMigratable")'
+                - text: '"Paused"'
+                  severity: '"warning"'
+                  when: 'conditionTrue(object, "Paused")'
+            - type: fields
+              items:
+                - label: VirtualMachine
+                  value: variables.ownerVM
+                  link: 'ref("kubevirt.io", "VirtualMachine", ns, variables.ownerVM)'
+                  when: variables.ownerVM != ""
+                - label: Phase
+                  type: status
+                  value: variables.phase
+                - label: Node
+                  value: object.?status.?nodeName
+                  link: 'ref("", "Node", object.status.nodeName)'
+                  when: object.?status.?nodeName.hasValue()
+                - label: vCPUs
+                  value: 'object.?status.?currentCPUTopology.hasValue() ? string(int(variables.vcpu)) : ""'
+                - label: Memory
+                  value: object.?status.?memory.?guestCurrent
+                - label: Machine type
+                  value: object.?status.?machine.?type
+                  mono: true
+                - label: QoS class
+                  value: object.?status.?qosClass
+                - label: Launcher image
+                  value: object.?status.?launcherContainerImageVersion
+                  mono: true
+                - label: Guest OS
+                  value: >-
+                    variables.hasAgent
+                      ? object.status.guestOSInfo.name + " " + object.status.guestOSInfo.?version.orValue("") +
+                        (object.status.guestOSInfo.?kernelRelease.hasValue() ? " (kernel " + object.status.guestOSInfo.kernelRelease + ")" : "")
+                      : "unknown (no guest agent)"
+            - type: conditions
+
+        - title: Interfaces
+          icon: lan
+          when: size(object.?status.?interfaces.orValue([])) > 0
+          summary: string(size(object.status.interfaces))
+          blocks:
+            - type: table
+              rows: object.status.interfaces
+              columns:
+                - {name: Interface, value: 'item.?name.orValue("")', mono: true}
+                - {name: IP addresses, value: 'item.?ipAddresses.orValue([]).join(", ")', mono: true}
+                - {name: MAC, value: 'item.?mac.orValue("")', mono: true}
+                - {name: Link, value: 'item.?linkState.orValue("")'}
+                - {name: Source, value: 'item.?infoSource.orValue("")'}
+            - type: links
+              items: >-
+                object.?spec.?networks.orValue([]).filter(n, n.?multus.hasValue()).map(n,
+                n.multus.networkName.contains("/")
+                  ? ref("k8s.cni.cncf.io", "NetworkAttachmentDefinition", n.multus.networkName.split("/")[0], n.multus.networkName.split("/")[1])
+                  : ref("k8s.cni.cncf.io", "NetworkAttachmentDefinition", ns, n.multus.networkName))
+              when: size(object.?spec.?networks.orValue([]).filter(n, n.?multus.hasValue())) > 0
+
+        - title: Migration
+          icon: sync_alt
+          when: object.?status.?migrationState.hasValue()
+          badge:
+            text: >-
+              object.status.migrationState.?completed.orValue(false) ? "Completed" :
+              object.status.migrationState.?failed.orValue(false) ? "Failed" : "In progress"
+            severity: >-
+              object.status.migrationState.?completed.orValue(false) ? "ok" :
+              object.status.migrationState.?failed.orValue(false) ? "error" : "info"
+          blocks:
+            - type: fields
+              items:
+                - label: Source node
+                  value: object.status.migrationState.?sourceNode
+                - label: Target node
+                  value: object.status.migrationState.?targetNode
+                - label: Mode
+                  value: object.status.migrationState.?mode
+                - label: Started
+                  type: age
+                  value: object.status.migrationState.?startTimestamp
+                - label: Ended
+                  type: age
+                  value: object.status.migrationState.?endTimestamp
+                - label: Failure
+                  value: object.status.migrationState.?failureReason
+                  severity: '"error"'
+
+        - title: Launcher pod
+          icon: apps
+          when: size(related.pods) > 0
+          summary: string(size(related.pods))
+          blocks:
+            - type: table
+              rows: related.pods
+              columns:
+                - {name: Pod, value: item.metadata.name, link: ref(item), mono: true}
+                - {name: Phase, type: status, value: 'item.status.?phase.orValue("")'}
+                - {name: Node, value: 'item.spec.?nodeName.orValue("")'}
+                - {name: Age, type: age, value: item.metadata.creationTimestamp}
+
+        - title: Usage
+          icon: speed
+          when: size(metrics.cpu) > 0 || size(metrics.memory) > 0
+          blocks:
+            - type: bar
+              label: CPU (vCPUs in use, 5m rate)
+              when: size(metrics.cpu) > 0
+              value: metrics.cpu[0].value
+              max: variables.vcpu
+              format: number
+            - type: bar
+              label: Memory (resident set of the guest)
+              when: size(metrics.memory) > 0 && size(metrics.memoryTotal) > 0
+              value: metrics.memory[0].value
+              max: metrics.memoryTotal[0].value
+              format: quantity
+            - type: fields
+              items:
+                - label: Network receive
+                  value: 'size(metrics.rx) > 0 ? string(int(metrics.rx[0].value / 1024.0)) + " KiB/s" : ""'
+                - label: Network transmit
+                  value: 'size(metrics.tx) > 0 ? string(int(metrics.tx[0].value / 1024.0)) + " KiB/s" : ""'
+
+  # ------------------------------------------------ VirtualMachineInstanceMigration
+  kubevirt.io/VirtualMachineInstanceMigration:
+    icon: sync_alt
+    columns:
+      - name: Phase
+        type: status
+        value: object.?status.?phase
+      - name: VMI
+        value: object.spec.vmiName
+      - name: Source
+        value: object.?status.?migrationState.?sourceNode
+      - name: Target
+        value: object.?status.?migrationState.?targetNode
+    panel:
+      generic: collapse
+      sections:
+        - title: Migration
+          icon: sync_alt
+          badge:
+            text: 'object.?status.?phase.orValue("Pending")'
+            severity: 'object.?status.?phase.orValue("") == "Failed" ? "error" : object.?status.?phase.orValue("") == "Succeeded" ? "ok" : "info"'
+          blocks:
+            - type: message
+              severity: error
+              when: 'object.?status.?phase.orValue("") == "Failed"'
+              title: '"Migration failed"'
+              text: 'string(object.status.?migrationState.?failureReason.orValue("see the conditions and the VMI"))'
+            - type: fields
+              items:
+                - label: VirtualMachineInstance
+                  value: object.spec.vmiName
+                  link: 'ref("kubevirt.io", "VirtualMachineInstance", ns, object.spec.vmiName)'
+                - label: Phase
+                  type: status
+                  value: object.?status.?phase
+                - label: Source node
+                  value: object.?status.?migrationState.?sourceNode
+                - label: Target node
+                  value: object.?status.?migrationState.?targetNode
+                - label: Mode
+                  value: object.?status.?migrationState.?mode
+                - label: Started
+                  type: age
+                  value: object.?status.?migrationState.?startTimestamp
+                - label: Ended
+                  type: age
+                  value: object.?status.?migrationState.?endTimestamp
+            - type: conditions
+    alerts:
+      - id: migration-failed
+        label: VM migrations failed
+        severity: error
+        when: 'object.?status.?phase.orValue("") == "Failed"'
+        message: '"Migration of " + object.spec.vmiName + " failed: " + string(object.status.?migrationState.?failureReason.orValue("no reason reported"))'
+        since: object.metadata.creationTimestamp
+    templates:
+      - name: Live migrate a VMI
+        description: Move a running VirtualMachineInstance to another node
+        yaml: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachineInstanceMigration
+          metadata:
+            name: ${name:migrate-vm}
+            namespace: ${namespace}
+          spec:
+            vmiName: ${vmi}
+
+  # ------------------------------------------------------------------- DataVolume
+  cdi.kubevirt.io/DataVolume:
+    icon: storage
+    variables:
+      phase: object.?status.?phase.orValue("")
+      # A short description of where the data comes from.
+      source: >-
+        object.spec.?source.?http.hasValue() ? "http: " + object.spec.source.http.url.find("[^/]+$") :
+        object.spec.?source.?registry.hasValue() ? "registry: " + object.spec.source.registry.?url.orValue(object.spec.source.registry.?imageStream.orValue("")).replace("docker://", "") :
+        object.spec.?source.?pvc.hasValue() ? "pvc: " + object.spec.source.pvc.?namespace.orValue(ns) + "/" + object.spec.source.pvc.name :
+        object.spec.?source.?blank.hasValue() ? "blank" :
+        object.spec.?source.?upload.hasValue() ? "upload" :
+        object.spec.?source.?snapshot.hasValue() ? "snapshot: " + object.spec.source.snapshot.name :
+        object.spec.?source.hasValue() ? object.spec.source.map(k, k).join(", ") :
+        object.spec.?sourceRef.hasValue() ? "dataSource: " + object.spec.sourceRef.name : ""
+      size: 'object.spec.?storage.?resources.?requests.?storage.orValue(object.spec.?pvc.?resources.?requests.?storage.orValue(""))'
+      class: 'object.spec.?storage.?storageClassName.orValue(object.spec.?pvc.?storageClassName.orValue(""))'
+      ownerVM: 'object.metadata.?ownerReferences.orValue([]).filter(o, o.kind == "VirtualMachine").map(o, o.name).join("")'
+    columns:
+      - name: Phase
+        type: status
+        value: variables.phase
+      - name: Progress
+        value: 'object.?status.?progress.orValue("") == "N/A" ? "" : object.?status.?progress.orValue("")'
+      - name: Source
+        value: variables.source
+      - name: Size
+        type: quantity
+        value: variables.size
+      - name: Storage class
+        value: variables.class
+    panel:
+      generic: collapse
+      sections:
+        - title: DataVolume
+          icon: storage
+          badge:
+            text: variables.phase
+            severity: >-
+              variables.phase == "Failed" ? "error" :
+              variables.phase == "Succeeded" ? "ok" :
+              variables.phase in ["Paused", "Unknown"] ? "warning" : "info"
+          blocks:
+            - type: message
+              severity: error
+              when: 'variables.phase == "Failed"'
+              title: '"Import or clone failed"'
+              text: 'string(condition(object, "Running").hasValue() ? condition(object, "Running").value().?message.orValue("") : "")'
+            - type: fields
+              items:
+                - label: Phase
+                  type: status
+                  value: variables.phase
+                - label: Progress
+                  value: 'object.?status.?progress.orValue("") == "N/A" ? "" : object.?status.?progress.orValue("")'
+                - label: Source
+                  value: variables.source
+                  mono: true
+                - label: Size
+                  value: variables.size
+                - label: Storage class
+                  value: variables.class
+                - label: Restarts
+                  value: 'object.?status.?restartCount.hasValue() ? string(object.status.restartCount) : ""'
+                - label: PVC
+                  value: object.?status.?claimName
+                  link: 'ref("", "PersistentVolumeClaim", ns, object.status.claimName)'
+                  when: object.?status.?claimName.hasValue()
+                - label: VirtualMachine
+                  value: variables.ownerVM
+                  link: 'ref("kubevirt.io", "VirtualMachine", ns, variables.ownerVM)'
+                  when: variables.ownerVM != ""
+            - type: conditions
+    alerts:
+      - id: datavolume-failed
+        label: DataVolumes failed
+        severity: error
+        when: 'variables.phase == "Failed"'
+        message: 'string(condition(object, "Running").hasValue() ? condition(object, "Running").value().?message.orValue("failed") : "failed")'
+        since: object.metadata.creationTimestamp
+    status:
+      label: DataVolumes
+      counts:
+        - label: importing
+          severity: info
+          when: 'object.?status.?phase.orValue("") in ["ImportInProgress", "CloneInProgress", "ImportScheduled", "CloneScheduled", "UploadScheduled"]'
+        - label: failed
+          severity: error
+          when: 'object.?status.?phase.orValue("") == "Failed"'
+    templates:
+      - name: Import from HTTP
+        description: Download a disk image into a new PVC
+        yaml: |
+          apiVersion: cdi.kubevirt.io/v1beta1
+          kind: DataVolume
+          metadata:
+            name: ${name:imported-disk}
+            namespace: ${namespace}
+          spec:
+            source:
+              http:
+                url: ${url:https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}
+            storage:
+              resources:
+                requests:
+                  storage: ${size:20Gi}
+      - name: Blank disk
+        description: An empty PVC for a VM to use
+        yaml: |
+          apiVersion: cdi.kubevirt.io/v1beta1
+          kind: DataVolume
+          metadata:
+            name: ${name:blank-disk}
+            namespace: ${namespace}
+          spec:
+            source:
+              blank: {}
+            storage:
+              resources:
+                requests:
+                  storage: ${size:10Gi}
+
+  # ------------------------------------------------------- VirtualMachineSnapshot
+  snapshot.kubevirt.io/VirtualMachineSnapshot:
+    icon: backup
+    variables:
+      phase: object.?status.?phase.orValue("")
+      ready: object.?status.?readyToUse.orValue(false)
+    columns:
+      - name: Phase
+        type: status
+        value: variables.phase
+      - name: Ready
+        type: bool
+        value: variables.ready
+      - name: Source
+        value: object.spec.?source.?name
+    panel:
+      generic: collapse
+      sections:
+        - title: Snapshot
+          icon: backup
+          badge:
+            text: variables.phase
+            severity: 'variables.phase == "Failed" ? "error" : variables.ready ? "ok" : "info"'
+          blocks:
+            - type: message
+              severity: error
+              when: object.?status.?error.hasValue()
+              title: '"Snapshot failed"'
+              text: string(object.status.error.?message.orValue(""))
+            - type: fields
+              items:
+                - label: Source
+                  value: 'object.spec.source.?kind.orValue("VirtualMachine") + "/" + object.spec.source.name'
+                  link: 'ref(object.spec.source.?apiGroup.orValue("kubevirt.io"), object.spec.source.?kind.orValue("VirtualMachine"), ns, object.spec.source.name)'
+                - label: Phase
+                  type: status
+                  value: variables.phase
+                - label: Ready to use
+                  type: bool
+                  value: variables.ready
+                - label: Taken
+                  type: age
+                  value: object.?status.?creationTime
+                - label: Indications
+                  value: 'object.?status.?indications.orValue([]).join(", ")'
+                - label: Deletion policy
+                  value: object.spec.?deletionPolicy
+                - label: Content
+                  value: object.?status.?virtualMachineSnapshotContentName
+                  mono: true
+            - type: conditions
+    templates:
+      - name: Snapshot a VM
+        description: A point-in-time snapshot of a VirtualMachine
+        yaml: |
+          apiVersion: snapshot.kubevirt.io/v1beta1
+          kind: VirtualMachineSnapshot
+          metadata:
+            name: ${name:snapshot-vm}
+            namespace: ${namespace}
+          spec:
+            source:
+              apiGroup: kubevirt.io
+              kind: VirtualMachine
+              name: ${vm}
+
+  # -------------------------------------------------------- VirtualMachineRestore
+  snapshot.kubevirt.io/VirtualMachineRestore:
+    icon: history
+    variables:
+      complete: object.?status.?complete.orValue(false)
+      state: >-
+        variables.complete ? "Complete" :
+        conditionTrue(object, "Progressing") ? "InProgress" :
+        condition(object, "Ready").hasValue() ? string(condition(object, "Ready").value().?reason.orValue("Pending")) : "Pending"
+    columns:
+      - name: Status
+        type: status
+        value: variables.state
+      - name: Target
+        value: object.spec.?target.?name
+      - name: Snapshot
+        value: object.spec.?virtualMachineSnapshotName
+      - name: Restored
+        type: age
+        value: object.?status.?restoreTime
+    panel:
+      generic: collapse
+      sections:
+        - title: Restore
+          icon: history
+          badge:
+            text: variables.state
+            severity: 'variables.complete ? "ok" : variables.state == "InProgress" ? "info" : "warning"'
+          blocks:
+            - type: fields
+              items:
+                - label: Target VM
+                  value: object.spec.target.name
+                  link: 'ref(object.spec.target.?apiGroup.orValue("kubevirt.io"), object.spec.target.?kind.orValue("VirtualMachine"), ns, object.spec.target.name)'
+                - label: Snapshot
+                  value: object.spec.?virtualMachineSnapshotName
+                  link: 'ref("snapshot.kubevirt.io", "VirtualMachineSnapshot", ns, object.spec.virtualMachineSnapshotName)'
+                - label: Complete
+                  type: bool
+                  value: variables.complete
+                - label: Restored
+                  type: age
+                  value: object.?status.?restoreTime
+                - label: Deleted DataVolumes
+                  value: 'object.?status.?deletedDataVolumes.orValue([]).join(", ")'
+            - type: conditions
+    templates:
+      - name: Restore a snapshot
+        description: Restore a VM to the state of a VirtualMachineSnapshot (the VM must be stopped)
+        yaml: |
+          apiVersion: snapshot.kubevirt.io/v1beta1
+          kind: VirtualMachineRestore
+          metadata:
+            name: ${name:restore-vm}
+            namespace: ${namespace}
+          spec:
+            target:
+              apiGroup: kubevirt.io
+              kind: VirtualMachine
+              name: ${vm}
+            virtualMachineSnapshotName: ${snapshot}
+
+  # ---------------------------------------------- instance types and preferences
+  instancetype.kubevirt.io/VirtualMachineClusterInstancetype:
+    icon: tune
+    columns: &itColumns
+      - name: CPU
+        type: number
+        value: object.spec.?cpu.?guest
+      - name: Memory
+        type: quantity
+        value: object.spec.?memory.?guest
+      - name: Class
+        value: 'object.metadata.?labels.orValue({})[?"instancetype.kubevirt.io/class"]'
+    panel: &itPanel
+      generic: collapse
+      sections:
+        - title: Instance type
+          icon: tune
+          blocks:
+            - type: fields
+              items:
+                - label: CPU (vCPUs)
+                  value: 'object.spec.?cpu.?guest.hasValue() ? string(object.spec.cpu.guest) : ""'
+                - label: Memory
+                  value: object.spec.?memory.?guest
+                - label: Class
+                  value: 'object.metadata.?labels.orValue({})[?"instancetype.kubevirt.io/class"]'
+                - label: Dedicated CPUs
+                  type: bool
+                  value: 'object.spec.?cpu.?dedicatedCPUPlacement.orValue(false)'
+                - label: Hugepages
+                  value: object.spec.?memory.?hugepages.?pageSize
+                - label: IO threads policy
+                  value: object.spec.?ioThreadsPolicy
+                - label: Description
+                  value: 'object.metadata.?annotations.orValue({})[?"instancetype.kubevirt.io/description"]'
+  instancetype.kubevirt.io/VirtualMachineInstancetype:
+    icon: tune
+    columns: *itColumns
+    panel: *itPanel
+    templates:
+      - name: Instance type
+        description: A namespaced CPU and memory shape for VMs
+        yaml: |
+          apiVersion: instancetype.kubevirt.io/v1beta1
+          kind: VirtualMachineInstancetype
+          metadata:
+            name: ${name:small}
+            namespace: ${namespace}
+          spec:
+            cpu:
+              guest: ${cpu:2}
+            memory:
+              guest: ${memory:4Gi}
+
+  instancetype.kubevirt.io/VirtualMachineClusterPreference:
+    icon: tune
+    variables: &prefVars
+      # preferredDiskBus, preferredInterfaceModel and the rest, as one line.
+      summary: >-
+        [object.spec.?devices.?preferredDiskBus.hasValue() ? "disk " + object.spec.devices.preferredDiskBus : "",
+         object.spec.?devices.?preferredInterfaceModel.hasValue() ? "nic " + object.spec.devices.preferredInterfaceModel : "",
+         object.spec.?machine.?preferredMachineType.hasValue() ? "machine " + object.spec.machine.preferredMachineType : "",
+         object.spec.?cpu.?preferredCPUTopology.hasValue() ? "topology " + object.spec.cpu.preferredCPUTopology : "",
+         object.spec.?firmware.?preferredUseEfi.orValue(false) ? "efi" : ""].filter(s, s != "").join(" · ")
+    columns: &prefColumns
+      - name: Preferences
+        value: variables.summary
+      - name: OS
+        value: 'object.metadata.?labels.orValue({})[?"instancetype.kubevirt.io/os-type"]'
+    panel: &prefPanel
+      generic: collapse
+      sections:
+        - title: Preference
+          icon: tune
+          blocks:
+            - type: fields
+              items:
+                - label: Summary
+                  value: variables.summary
+                - label: Requires CPU
+                  value: 'object.spec.?requirements.?cpu.?guest.hasValue() ? string(object.spec.requirements.cpu.guest) : ""'
+                - label: Requires memory
+                  value: object.spec.?requirements.?memory.?guest
+            - type: settings
+              value: object.spec
+              limit: 30
+  instancetype.kubevirt.io/VirtualMachinePreference:
+    icon: tune
+    variables: *prefVars
+    columns: *prefColumns
+    panel: *prefPanel

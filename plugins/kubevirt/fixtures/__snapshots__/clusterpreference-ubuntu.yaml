@@ -1,0 +1,40 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: instancetype.kubevirt.io/VirtualMachineClusterPreference ubuntu
+columns:
+  - name: Preferences
+    value: disk virtio · nic virtio · machine q35 · topology preferSockets
+  - name: OS
+    value: linux
+panel:
+  sections:
+    - blocks:
+        - items:
+            - label: Summary
+              type: text
+              value: disk virtio · nic virtio · machine q35 · topology preferSockets
+            - label: Requires CPU
+              type: text
+              value: "1"
+            - label: Requires memory
+              type: text
+              value: 2Gi
+          type: fields
+        - rows:
+            - label: annotations.vm.kubevirt.io/os
+              value: linux
+            - label: cpu.preferredCPUTopology
+              value: preferSockets
+            - label: devices.preferredDiskBus
+              value: virtio
+            - label: devices.preferredInterfaceModel
+              value: virtio
+            - label: machine.preferredMachineType
+              value: q35
+            - label: requirements.cpu.guest
+              value: "1"
+            - label: requirements.memory.guest
+              value: 2Gi
+          total: 7
+          type: settings
+      icon: tune
+      title: Preference

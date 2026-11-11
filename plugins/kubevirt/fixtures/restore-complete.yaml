@@ -1,0 +1,19 @@
+apiVersion: snapshot.kubevirt.io/v1beta1
+kind: VirtualMachineRestore
+metadata:
+  name: restore-kv-ubuntu-test
+  namespace: bioinformatics
+  creationTimestamp: "2025-12-31T11:00:00Z"
+spec:
+  target:
+    apiGroup: kubevirt.io
+    kind: VirtualMachine
+    name: kv-ubuntu-test
+  virtualMachineSnapshotName: kv-ubuntu-test-before-upgrade
+status:
+  complete: true
+  restoreTime: "2025-12-31T11:01:10Z"
+  deletedDataVolumes: [kv-ubuntu-test-root-old]
+  conditions:
+    - {type: Progressing, status: "False", reason: Operation complete, lastTransitionTime: "2025-12-31T11:01:10Z"}
+    - {type: Ready, status: "True", reason: Operation complete, lastTransitionTime: "2025-12-31T11:01:10Z"}

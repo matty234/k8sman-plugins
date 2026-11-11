@@ -1,0 +1,56 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: snapshot.kubevirt.io/VirtualMachineRestore bioinformatics/restore-kv-ubuntu-test
+columns:
+  - name: Status
+    value: Complete
+  - name: Target
+    value: kv-ubuntu-test
+  - name: Snapshot
+    value: kv-ubuntu-test-before-upgrade
+  - name: Restored
+    value: "2025-12-31T11:01:10Z"
+panel:
+  sections:
+    - badge:
+        severity: ok
+        text: Complete
+      blocks:
+        - items:
+            - label: Target VM
+              link:
+                group: kubevirt.io
+                kind: VirtualMachine
+                name: kv-ubuntu-test
+                namespace: bioinformatics
+              type: text
+              value: kv-ubuntu-test
+            - label: Snapshot
+              link:
+                group: snapshot.kubevirt.io
+                kind: VirtualMachineSnapshot
+                name: kv-ubuntu-test-before-upgrade
+                namespace: bioinformatics
+              type: text
+              value: kv-ubuntu-test-before-upgrade
+            - label: Complete
+              type: bool
+              value: true
+            - label: Restored
+              type: age
+              value: "2025-12-31T11:01:10Z"
+            - label: Deleted DataVolumes
+              type: text
+              value: kv-ubuntu-test-root-old
+          type: fields
+        - conditions:
+            - lastTransitionTime: "2025-12-31T11:01:10Z"
+              reason: Operation complete
+              status: "False"
+              type: Progressing
+            - lastTransitionTime: "2025-12-31T11:01:10Z"
+              reason: Operation complete
+              status: "True"
+              type: Ready
+          type: conditions
+      icon: history
+      title: Restore

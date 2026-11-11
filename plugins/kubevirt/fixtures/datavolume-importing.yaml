@@ -1,0 +1,48 @@
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  annotations:
+    cdi.kubevirt.io/allowClaimAdoption: "true"
+    cdi.kubevirt.io/storage.usePopulator: "true"
+  creationTimestamp: "2026-11-11T16:25:25Z"
+  generation: 1
+  labels:
+    instancetype.kubevirt.io/default-instancetype: u1.medium
+    instancetype.kubevirt.io/default-preference: ubuntu
+    kubevirt.io/created-by: 6673faeb-bba9-4370-9886-9cff3cfb70f9
+  name: kv-ubuntu-test-root
+  namespace: bioinformatics
+  ownerReferences:
+    - apiVersion: kubevirt.io/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: VirtualMachine
+      name: kv-ubuntu-test
+      uid: 6673faeb-bba9-4370-9886-9cff3cfb70f9
+  uid: 35d7184e-b4b8-4502-b625-f4e0d3f05508
+spec:
+  source:
+    http:
+      url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+  storage:
+    resources:
+      requests:
+        storage: 20Gi
+    storageClassName: rook-ceph-block-ssd
+status:
+  claimName: kv-ubuntu-test-root
+  conditions:
+    - type: Bound
+      status: "True"
+      reason: Bound
+      message: PVC kv-ubuntu-test-root Bound
+    - type: Ready
+      status: "False"
+      reason: ImportInProgress
+    - type: Running
+      status: "True"
+      reason: Pending
+      message: Import is running
+  phase: ImportInProgress
+  progress: 42.3%
+  restartCount: 0

@@ -1,0 +1,21 @@
+apiVersion: snapshot.kubevirt.io/v1beta1
+kind: VirtualMachineSnapshot
+metadata:
+  name: kv-ubuntu-test-before-upgrade
+  namespace: bioinformatics
+  creationTimestamp: "2025-12-31T10:00:00Z"
+spec:
+  source:
+    apiGroup: kubevirt.io
+    kind: VirtualMachine
+    name: kv-ubuntu-test
+  deletionPolicy: Delete
+status:
+  phase: Succeeded
+  readyToUse: true
+  creationTime: "2025-12-31T10:00:30Z"
+  virtualMachineSnapshotContentName: vmsnapshot-content-7d1c0f2a
+  indications: [Online, NoGuestAgent]
+  conditions:
+    - {type: Progressing, status: "False", reason: Operation complete, lastTransitionTime: "2025-12-31T10:00:30Z"}
+    - {type: Ready, status: "True", reason: Operation complete, lastTransitionTime: "2025-12-31T10:00:30Z"}
