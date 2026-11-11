@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         # The latest app, and the oldest release plugins must still load in.
-        ref: [main, v0.2.15]
+        ref: [main, v0.2.17]
     steps:
       - uses: actions/checkout@v4
         with:
