@@ -1,0 +1,91 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: postgresql.cnpg.io/Pooler db/pg-main-pooler-rw
+columns:
+  - name: Pool Mode
+    value: transaction
+  - name: Instances
+    value: 2
+  - name: Paused
+    value: false
+panel:
+  refresh: 5
+  sections:
+    - badge:
+        severity: warning
+        text: 1/2 ready
+      blocks:
+        - items:
+            - label: Cluster
+              link:
+                group: postgresql.cnpg.io
+                kind: Cluster
+                name: pg-main
+                namespace: db
+              type: text
+              value: pg-main
+            - label: Type
+              type: text
+              value: rw
+            - label: Pool mode
+              type: text
+              value: transaction
+            - label: Instances
+              type: text
+              value: 1 of 2 ready
+            - copy: true
+              label: Service
+              link:
+                group: ""
+                kind: Service
+                name: pg-main-pooler-rw
+                namespace: db
+              type: text
+              value: pg-main-pooler-rw
+            - label: Deployment
+              link:
+                group: apps
+                kind: Deployment
+                name: pg-main-pooler-rw
+                namespace: db
+              type: text
+              value: pg-main-pooler-rw
+          type: fields
+        - columns:
+            - name: Pod
+              type: text
+            - name: Ready
+              type: status
+            - name: Node
+              type: text
+          limit: 20
+          rows:
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: pg-main-pooler-rw-7c9d8-abcde
+                  namespace: db
+                value: pg-main-pooler-rw-7c9d8-abcde
+              - value: Ready
+              - value: node-a
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: pg-main-pooler-rw-7c9d8-fghij
+                  namespace: db
+                value: pg-main-pooler-rw-7c9d8-fghij
+              - value: Pending
+              - value: node-b
+          total: 2
+          type: table
+      icon: hub
+      title: Pooler
+    - blocks:
+        - rows:
+            - label: default_pool_size
+              value: "20"
+            - label: max_client_conn
+              value: "1000"
+          total: 2
+          type: settings
+      icon: tune
+      title: PgBouncer parameters

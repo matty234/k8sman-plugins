@@ -1,0 +1,97 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: postgresql.cnpg.io/Backup db/pg-main-daily-20251231000000
+columns:
+  - name: Phase
+    value: completed
+  - name: Started
+    value: "2025-12-31T00:00:05Z"
+  - name: Took
+    value: 60s
+panel:
+  sections:
+    - badge:
+        severity: ok
+        text: completed
+      blocks:
+        - items:
+            - label: Cluster
+              link:
+                group: postgresql.cnpg.io
+                kind: Cluster
+                name: pg-main
+                namespace: db
+              type: text
+              value: pg-main
+            - label: Scheduled by
+              link:
+                group: postgresql.cnpg.io
+                kind: ScheduledBackup
+                name: pg-main-daily
+                namespace: db
+              type: text
+              value: pg-main-daily
+            - label: Method
+              type: text
+              value: plugin
+            - label: Plugin
+              type: text
+              value: barman-cloud.cloudnative-pg.io 0.15.1
+            - label: Online
+              type: bool
+              value: true
+            - label: Started
+              type: timestamp
+              value: "2025-12-31T00:00:05Z"
+            - label: Stopped
+              type: timestamp
+              value: "2025-12-31T00:01:05Z"
+            - label: Took
+              type: text
+              value: 60s
+            - label: Instance
+              link:
+                group: ""
+                kind: Pod
+                name: pg-main-2
+                namespace: db
+              type: text
+              value: pg-main-2
+            - label: PostgreSQL major
+              type: number
+              value: 18
+            - label: Timeline
+              type: text
+              value: "2"
+          type: fields
+      icon: backup
+      title: Backup
+    - blocks:
+        - items:
+            - copy: true
+              label: Backup ID
+              mono: true
+              type: text
+              value: 20251231T000005
+            - label: Backup name
+              mono: true
+              type: text
+              value: backup-20251231000005
+            - label: Begin WAL
+              mono: true
+              type: text
+              value: 000000020000000A00000010
+            - label: End WAL
+              mono: true
+              type: text
+              value: 000000020000000A00000010
+            - label: Begin LSN
+              mono: true
+              type: text
+              value: A/10000028
+            - label: End LSN
+              mono: true
+              type: text
+              value: A/1000EAC8
+          type: fields
+      icon: storage
+      title: WAL and storage

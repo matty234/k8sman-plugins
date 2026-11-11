@@ -1,0 +1,17 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: pg-main-daily-20251201000000
+  namespace: db
+  creationTimestamp: "2025-12-01T00:00:00Z"
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/scheduled-backup: pg-main-daily}
+spec:
+  cluster: {name: pg-main}
+  method: plugin
+  pluginConfiguration: {name: barman-cloud.cloudnative-pg.io}
+status:
+  phase: failed
+  method: plugin
+  majorVersion: 18
+  instanceID: {podName: pg-main-2}
+  error: "requested plugin is not available: barman-cloud.cloudnative-pg.io"

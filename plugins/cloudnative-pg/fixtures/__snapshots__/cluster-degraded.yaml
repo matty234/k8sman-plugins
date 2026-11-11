@@ -1,0 +1,242 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: postgresql.cnpg.io/Cluster db/pg-orders
+columns:
+  - name: Ready
+    value: 1/3
+  - name: Status
+    value: 'Error: Failing over'
+  - name: Postgres
+    value: "17"
+  - name: Storage
+    value: 50Gi
+  - name: Last Backup
+    value: null
+panel:
+  refresh: 5
+  sections:
+    - badge:
+        severity: error
+        text: 'Error: Failing over'
+      blocks:
+        - severity: error
+          text: Failing for 0h20m; the operator fails over once failoverDelay has passed.
+          title: Primary pg-orders-1 is failing
+          type: message
+        - severity: error
+          text: Failing over from pg-orders-1 to pg-orders-2
+          title: Failing over
+          type: message
+        - severity: warning
+          text: Primary changing from pg-orders-1 to pg-orders-2
+          type: message
+        - severity: warning
+          text: 'Unusable volumes: pg-orders-1'
+          type: message
+        - items:
+            - label: Phase
+              severity: error
+              type: status
+              value: Failing over
+            - copy: true
+              label: Primary
+              link:
+                group: ""
+                kind: Pod
+                name: pg-orders-1
+                namespace: db
+              type: text
+              value: pg-orders-1
+            - label: Instances
+              severity: warning
+              type: text
+              value: 1 of 3 ready
+            - label: Timeline
+              type: number
+              value: 4
+            - copy: true
+              label: Image
+              mono: true
+              type: text
+              value: ghcr.io/cloudnative-pg/postgresql@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - label: Image catalog
+              link:
+                group: postgresql.cnpg.io
+                kind: ClusterImageCatalog
+                name: postgresql-standard
+                namespace: db
+              type: text
+              value: ClusterImageCatalog/postgresql-standard · major 17
+            - label: PostgreSQL major
+              type: number
+              value: 17
+            - label: Storage
+              type: text
+              value: 50Gi
+            - label: WAL storage
+              type: text
+              value: 10Gi
+            - copy: true
+              label: Read-write service
+              link:
+                group: ""
+                kind: Service
+                name: pg-orders-rw
+                namespace: db
+              type: text
+              value: pg-orders-rw
+            - copy: true
+              label: Read-only service
+              link:
+                group: ""
+                kind: Service
+                name: pg-orders-ro
+                namespace: db
+              type: text
+              value: pg-orders-ro
+            - label: Read service
+              link:
+                group: ""
+                kind: Service
+                name: pg-orders-r
+                namespace: db
+              type: text
+              value: pg-orders-r
+          type: fields
+      icon: monitor_heart
+      title: Cluster
+    - blocks:
+        - columns:
+            - mono: true
+              name: Instance
+              type: text
+            - name: Role
+              type: status
+            - name: Status
+              type: status
+            - name: Pod
+              type: status
+            - name: Restarts
+              type: number
+            - name: Node
+              type: text
+            - name: Timeline
+              type: number
+          empty: No instances reported yet.
+          limit: 20
+          rows:
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: pg-orders-1
+                  namespace: db
+                value: pg-orders-1
+              - severity: ok
+                value: Primary
+              - severity: error
+                value: failed
+              - severity: error
+                value: Missing
+              - value: 0
+              - value: ""
+              - value: null
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: pg-orders-2
+                  namespace: db
+                value: pg-orders-2
+              - severity: info
+                value: Replica
+              - severity: ok
+                value: healthy
+              - severity: ok
+                value: Ready
+              - value: 0
+              - link:
+                  group: ""
+                  kind: Node
+                  name: node-b
+                  namespace: db
+                value: node-b
+              - value: null
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: pg-orders-3
+                  namespace: db
+                value: pg-orders-3
+              - severity: info
+                value: Replica
+              - severity: warning
+                value: replicating
+              - severity: warning
+                value: Not ready
+              - value: 4
+              - link:
+                  group: ""
+                  kind: Node
+                  name: node-c
+                  namespace: db
+                value: node-c
+              - value: null
+          total: 3
+          type: table
+      icon: dns
+      summary: 1/3 ready
+      title: Instances
+    - blocks:
+        - items:
+            - label: Replicas
+              type: number
+              value: 2
+            - label: Synchronous
+              type: text
+              value: asynchronous
+            - label: HA replication slots
+              type: bool
+              value: true
+            - label: Primary updates
+              type: text
+              value: unsupervised · restart
+            - label: Failover delay
+              type: text
+              value: 0s
+            - label: Pod disruption budget
+              type: bool
+              value: true
+            - label: Anti-affinity
+              type: text
+              value: preferred
+          type: fields
+      icon: shield
+      title: Replication and HA
+    - blocks:
+        - severity: info
+          text: 'No backups: the cluster has no WAL archiver, object store or volume snapshot configuration.'
+          type: message
+        - items: []
+          type: fields
+      icon: backup
+      title: Backups and WAL archiving
+    - blocks:
+        - conditions:
+            - lastTransitionTime: "2025-12-31T23:40:00Z"
+              message: Cluster Is Not Ready
+              reason: ClusterIsNotReady
+              status: "False"
+              type: Ready
+          type: conditions
+      icon: checklist
+      title: Conditions
+alerts:
+  - id: cluster-unhealthy
+    message: 'Failing over: Failing over from pg-orders-1 to pg-orders-2'
+    section: custom
+    severity: critical
+    since: "2025-12-31T23:40:00Z"
+  - id: instances-not-ready
+    message: 1 of 3 instances ready
+    section: custom
+    severity: warning
+    since: "2025-12-31T23:40:00Z"
+status: 'Clusters: 1 · not healthy: 1 · archiving failing: 0 · backup failed or overdue: 0 (critical)'

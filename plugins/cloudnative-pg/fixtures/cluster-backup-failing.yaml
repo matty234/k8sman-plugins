@@ -1,0 +1,51 @@
+# Instances are fine, but WAL archiving and the last backup are failing, the
+# last good backup is old, and the server certificate was not renewed.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-billing
+  namespace: db
+  uid: 11111111-0000-0000-0000-000000000003
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.6
+  storage:
+    size: 5Gi
+  backup:
+    retentionPolicy: 7d
+    barmanObjectStore:
+      destinationPath: s3://backups/pg-billing
+status:
+  phase: Cluster in healthy state
+  instances: 1
+  readyInstances: 1
+  currentPrimary: pg-billing-1
+  targetPrimary: pg-billing-1
+  timelineID: 1
+  image: ghcr.io/cloudnative-pg/postgresql:16.6
+  instanceNames: [pg-billing-1]
+  instancesStatus:
+    healthy: [pg-billing-1]
+  lastSuccessfulBackup: "2025-12-25T00:02:00Z"
+  lastFailedBackup: "2025-12-31T00:00:40Z"
+  firstRecoverabilityPoint: "2025-12-01T00:02:00Z"
+  certificates:
+    expirations:
+      pg-billing-ca: 2026-03-01 10:00:00 +0000 UTC
+      pg-billing-server: 2026-01-03 12:00:00 +0000 UTC
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ClusterIsReady
+      lastTransitionTime: "2025-12-01T00:00:00Z"
+    - type: ContinuousArchiving
+      status: "False"
+      reason: ContinuousArchivingFailing
+      message: "unexpected failure invoking barman-cloud-wal-archive: exit status 4"
+      lastTransitionTime: "2025-12-30T08:00:00Z"
+    - type: LastBackupSucceeded
+      status: "False"
+      reason: LastBackupFailed
+      message: "can't execute backup: exit status 4"
+      lastTransitionTime: "2025-12-31T00:00:40Z"

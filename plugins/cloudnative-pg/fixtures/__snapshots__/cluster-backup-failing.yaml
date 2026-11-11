@@ -1,0 +1,229 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: postgresql.cnpg.io/Cluster db/pg-billing
+columns:
+  - name: Ready
+    value: 1/1
+  - name: Status
+    value: Healthy
+  - name: Postgres
+    value: "16.6"
+  - name: Storage
+    value: 5Gi
+  - name: Last Backup
+    value: "2025-12-25T00:02:00Z"
+panel:
+  refresh: 5
+  sections:
+    - badge:
+        severity: ok
+        text: Healthy
+      blocks:
+        - items:
+            - label: Phase
+              severity: ok
+              type: status
+              value: Cluster in healthy state
+            - copy: true
+              label: Primary
+              link:
+                group: ""
+                kind: Pod
+                name: pg-billing-1
+                namespace: db
+              type: text
+              value: pg-billing-1
+            - label: Instances
+              severity: ok
+              type: text
+              value: 1 of 1 ready
+            - label: Timeline
+              type: number
+              value: 1
+            - copy: true
+              label: Image
+              mono: true
+              type: text
+              value: ghcr.io/cloudnative-pg/postgresql:16.6
+            - label: Storage
+              type: text
+              value: 5Gi
+            - copy: true
+              label: Read-only service
+              link:
+                group: ""
+                kind: Service
+                name: pg-billing-ro
+                namespace: db
+              type: text
+              value: pg-billing-ro
+          type: fields
+      icon: monitor_heart
+      title: Cluster
+    - blocks:
+        - columns:
+            - mono: true
+              name: Instance
+              type: text
+            - name: Role
+              type: status
+            - name: Status
+              type: status
+            - name: Pod
+              type: status
+            - name: Restarts
+              type: number
+            - name: Node
+              type: text
+            - name: Timeline
+              type: number
+          empty: No instances reported yet.
+          limit: 20
+          rows:
+            - - link:
+                  group: ""
+                  kind: Pod
+                  name: pg-billing-1
+                  namespace: db
+                value: pg-billing-1
+              - severity: ok
+                value: Primary
+              - severity: ok
+                value: healthy
+              - severity: error
+                value: Missing
+              - value: 0
+              - value: ""
+              - value: null
+          total: 1
+          type: table
+      icon: dns
+      summary: 1/1 ready
+      title: Instances
+    - blocks:
+        - items:
+            - label: Replicas
+              type: number
+              value: 0
+            - label: Synchronous
+              type: text
+              value: asynchronous
+            - label: HA replication slots
+              type: bool
+              value: true
+            - label: Primary updates
+              type: text
+              value: unsupervised · restart
+            - label: Failover delay
+              type: text
+              value: 0s
+            - label: Pod disruption budget
+              type: bool
+              value: true
+            - label: Anti-affinity
+              type: text
+              value: preferred
+          type: fields
+      icon: shield
+      title: Replication and HA
+    - badge:
+        severity: error
+        text: Archiving failing
+      blocks:
+        - severity: error
+          text: 'unexpected failure invoking barman-cloud-wal-archive: exit status 4'
+          title: Continuous archiving is failing
+          type: message
+        - severity: error
+          text: 'can''t execute backup: exit status 4'
+          title: The last backup failed
+          type: message
+        - items:
+            - label: WAL archiving
+              severity: error
+              type: status
+              value: Failing
+            - label: WAL archiver
+              type: text
+              value: Barman Cloud (in-tree)
+            - label: Retention
+              type: text
+              value: 7d
+            - label: Last successful backup
+              severity: neutral
+              type: age
+              value: "2025-12-25T00:02:00Z"
+            - label: Last failed backup
+              type: age
+              value: "2025-12-31T00:00:40Z"
+            - label: First recoverability point
+              type: timestamp
+              value: "2025-12-01T00:02:00Z"
+          type: fields
+      icon: backup
+      title: Backups and WAL archiving
+    - blocks:
+        - columns:
+            - name: Secret
+              type: text
+            - name: Expires
+              type: until
+          limit: 20
+          rows:
+            - - link:
+                  group: ""
+                  kind: Secret
+                  name: pg-billing-server
+                  namespace: db
+                value: pg-billing-server
+              - severity: warning
+                value: "2026-01-03T12:00:00Z"
+            - - link:
+                  group: ""
+                  kind: Secret
+                  name: pg-billing-ca
+                  namespace: db
+                value: pg-billing-ca
+              - severity: ok
+                value: "2026-03-01T10:00:00Z"
+          total: 2
+          type: table
+        - items: []
+          type: fields
+      icon: verified
+      summary: next expiry in 2d12h
+      title: Certificates
+    - blocks:
+        - conditions:
+            - lastTransitionTime: "2025-12-01T00:00:00Z"
+              reason: ClusterIsReady
+              status: "True"
+              type: Ready
+            - lastTransitionTime: "2025-12-30T08:00:00Z"
+              message: 'unexpected failure invoking barman-cloud-wal-archive: exit status 4'
+              reason: ContinuousArchivingFailing
+              status: "False"
+              type: ContinuousArchiving
+            - lastTransitionTime: "2025-12-31T00:00:40Z"
+              message: 'can''t execute backup: exit status 4'
+              reason: LastBackupFailed
+              status: "False"
+              type: LastBackupSucceeded
+          type: conditions
+      icon: checklist
+      title: Conditions
+alerts:
+  - id: archiving-failing
+    message: 'unexpected failure invoking barman-cloud-wal-archive: exit status 4'
+    section: custom
+    severity: critical
+    since: "2025-12-30T08:00:00Z"
+  - id: backup-failed
+    message: 'can''t execute backup: exit status 4'
+    section: custom
+    severity: critical
+    since: "2025-12-31T00:00:40Z"
+  - id: certificates-expiring
+    message: pg-billing-server expires in 2d12h
+    section: custom
+    severity: warning
+status: 'Clusters: 1 · not healthy: 0 · archiving failing: 1 · backup failed or overdue: 1 (critical)'

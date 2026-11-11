@@ -6,7 +6,7 @@ Kubernetes CRD, with no code. Browse them at
 <https://k8sman.dev/plugins>; k8sman installs them from the signed index at
 <https://matty234.github.io/k8sman-plugins/index.json>.
 
-Included: `karpenter`, `flux`, `crossplane`.
+Included: `karpenter`, `flux`, `crossplane`, `cloudnative-pg`.
 
 ## Submitting a plugin
 

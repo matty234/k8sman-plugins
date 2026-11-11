@@ -1,0 +1,1203 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/matty234/k8sman/main/schema/plugin.v1.json
+#
+# CloudNativePG (postgresql.cnpg.io): Clusters, Backups, ScheduledBackups,
+# Poolers, declarative Databases, Publications and Subscriptions, image
+# catalogs, and the Barman Cloud plugin's ObjectStores. Read-only: it
+# changes nothing and runs no commands.
+#
+# Backups are found by spec.cluster.name (not every Backup has the
+# cnpg.io/cluster label), instance Pods by the cnpg.io/cluster label.
+# Without a cluster: k8sman-server plugin test plugins/cloudnative-pg
+apiVersion: k8sman.dev/v1
+id: cloudnative-pg
+name: CloudNativePG
+version: 1.0.0
+description: PostgreSQL clusters run by CloudNativePG, with instances, replication, backups, WAL archiving, certificates and poolers, and alerts for unhealthy clusters and failing backups.
+authors: [k8sman community]
+homepage: https://cloudnative-pg.io
+minAppVersion: "0.2.15"
+
+permissions:
+  read:
+    - postgresql.cnpg.io/Cluster
+    - postgresql.cnpg.io/Backup
+    - postgresql.cnpg.io/ScheduledBackup
+    - postgresql.cnpg.io/Pooler
+    - postgresql.cnpg.io/Database
+    - postgresql.cnpg.io/Publication
+    - postgresql.cnpg.io/Subscription
+    - postgresql.cnpg.io/ImageCatalog
+    - postgresql.cnpg.io/ClusterImageCatalog
+    - barmancloud.cnpg.io/ObjectStore   # the Barman Cloud plugin's recovery window
+    - /Pod                              # a cluster's instances, a pooler's pods
+    - apps/Deployment                   # a pooler's PgBouncer deployment
+
+nav:
+  title: CloudNativePG
+  kinds:
+    - postgresql.cnpg.io/Cluster
+    - postgresql.cnpg.io/Backup
+    - postgresql.cnpg.io/ScheduledBackup
+    - postgresql.cnpg.io/Pooler
+    - postgresql.cnpg.io/Database
+    - postgresql.cnpg.io/Publication
+    - postgresql.cnpg.io/Subscription
+    - postgresql.cnpg.io/ImageCatalog
+    - postgresql.cnpg.io/ClusterImageCatalog
+    - barmancloud.cnpg.io/ObjectStore
+
+kinds:
+  postgresql.cnpg.io/Cluster:
+    icon: icon.png
+    variables:
+      phase: string(object.?status.?phase.orValue(""))
+      healthy: variables.phase == "Cluster in healthy state"
+      hibernated: object.metadata.?annotations[?"cnpg.io/hibernation"].orValue("") == "on"
+      # ok, warning (a phase the operator is working through: switchover,
+      # creating a replica, rolling update) or error (failing over, out of
+      # disk, a missing plugin or image, …).
+      phaseSeverity: >-
+        variables.hibernated ? "neutral" : variables.healthy ? "ok" : variables.phase == "" ? "warning" :
+        variables.phase.matches("(?i)fail|unable|cannot|not enough|unrecoverable|error|missing|invalid|unknown") ? "error" : "warning"
+      statusText: >-
+        variables.hibernated ? "Hibernated" : variables.healthy ? "Healthy" : variables.phase == "" ? "Pending" :
+        (variables.phaseSeverity == "error" ? "Error: " : "Progressing: ") + variables.phase
+      desired: int(object.spec.?instances.orValue(1))
+      readyCount: int(object.?status.?readyInstances.orValue(0))
+      primary: string(object.?status.?currentPrimary.orValue(""))
+      targetPrimary: string(object.?status.?targetPrimary.orValue(""))
+      image: string(object.?status.?image.orValue(object.spec.?imageName.orValue("")))
+      # The image's last path segment without a digest: "postgresql:18.1".
+      imageName: >-
+        variables.image.split("@")[0].split("/")[size(variables.image.split("@")[0].split("/")) - 1]
+      imageTag: 'variables.imageName.contains(":") ? variables.imageName.split(":")[1] : ""'
+      major: object.?status.?pgDataImageInfo.?majorVersion
+      postgres: >-
+        variables.imageTag != "" ? variables.imageTag
+          : variables.major.hasValue() ? string(variables.major.value()) : ""
+      # Since when the cluster has not been Ready (its Ready condition).
+      unhealthySince: condition(object, "Ready").?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+      unhealthy: >-
+        !variables.hibernated && variables.phase != "" && !variables.healthy &&
+        age(variables.unhealthySince) > duration("5m")
+      instancesDown: >-
+        !variables.hibernated && variables.readyCount < variables.desired &&
+        age(variables.unhealthySince) > duration("5m")
+      archiving: condition(object, "ContinuousArchiving")
+      archivingFailing: variables.archiving.hasValue() && variables.archiving.value().status == "False"
+      backupCond: condition(object, "LastBackupSucceeded")
+      backupFailed: variables.backupCond.hasValue() && variables.backupCond.value().status == "False"
+      # The in-tree Barman status field, or else the time the
+      # LastBackupSucceeded condition was last set to True (the operator sets
+      # it on every successful backup, plugin-based ones included).
+      lastBackup: >-
+        object.?status.?lastSuccessfulBackup.or(
+          conditionTrue(object, "LastBackupSucceeded") ? condition(object, "LastBackupSucceeded").?lastTransitionTime : optional.none())
+      backupStale: >-
+        !variables.hibernated && !variables.backupFailed && variables.lastBackup.hasValue() &&
+        age(variables.lastBackup.value()) > duration("48h")
+      # status.certificates.expirations: secret name → "2026-03-01 10:00:00 +0000 UTC".
+      certExpirations: object.?status.?certificates.?expirations.orValue({})
+      certs: >-
+        variables.certExpirations.map(k, k).sort()
+          .filter(k, string(variables.certExpirations[k]).matches("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"))
+          .map(k, {"name": k, "at": timestamp(string(variables.certExpirations[k]).split(" ")[0] + "T" + string(variables.certExpirations[k]).split(" ")[1] + "Z")})
+      # CloudNativePG renews the certificates it manages 7 days before they
+      # expire, so one within 6 days was not renewed.
+      certsExpiring: variables.certs.filter(c, until(c.at) < duration("144h"))
+      # The Barman Cloud plugin, when it is the WAL archiver.
+      barmanPlugin: >-
+        object.spec.?plugins.orValue([]).filter(p, p.name == "barman-cloud.cloudnative-pg.io" && p.?enabled.orValue(true))
+      objectStoreName: >-
+        string((variables.barmanPlugin.map(p, string(p.?parameters.?barmanObjectName.orValue(""))) + [""])[0])
+      serverName: >-
+        string((variables.barmanPlugin.map(p, string(p.?parameters.?serverName.orValue(""))).filter(s, s != "") + [object.metadata.name])[0])
+      walArchiver: >-
+        has(object.spec.backup) && has(object.spec.backup.barmanObjectStore) ? "Barman Cloud (in-tree)" :
+        string((object.spec.?plugins.orValue([]).filter(p, p.?isWALArchiver.orValue(false) && p.?enabled.orValue(true)).map(p, string(p.name)) + [""])[0])
+      snapshots: object.spec.?backup.?volumeSnapshot.hasValue()
+      # Panels only (they read related objects).
+      instancePods: related.pods.filter(p, p.metadata.?labels[?"cnpg.io/podRole"].orValue("instance") == "instance" && !p.metadata.?labels[?"cnpg.io/jobRole"].hasValue())
+      window: related.?objectStore.?status.?serverRecoveryWindow[?variables.serverName]
+      lastCompleted: >-
+        related.backups.filter(b, b.?status.?phase.orValue("") == "completed" && has(b.status.stoppedAt))
+          .map(b, timestamp(b.status.stoppedAt)).sort()
+      lastBackupAny: >-
+        ((variables.lastBackup.hasValue() ? [timestamp(variables.lastBackup.value())] : [])
+          + (variables.window.?lastSuccessfulBackupTime.hasValue() ? [timestamp(variables.window.value().lastSuccessfulBackupTime)] : [])
+          + variables.lastCompleted).sort()
+      firstRecoverability: >-
+        object.?status.?firstRecoverabilityPoint.or(variables.window.?firstRecoverabilityPoint)
+
+    related:
+      pods:
+        kind: /Pod
+        selector: '{"cnpg.io/cluster": object.metadata.name}'
+      backups:
+        kind: postgresql.cnpg.io/Backup
+        filter: item.spec.?cluster.?name.orValue("") == object.metadata.name
+        limit: 1000
+      scheduledBackups:
+        kind: postgresql.cnpg.io/ScheduledBackup
+        filter: item.spec.?cluster.?name.orValue("") == object.metadata.name
+      poolers:
+        kind: postgresql.cnpg.io/Pooler
+        filter: item.spec.?cluster.?name.orValue("") == object.metadata.name
+      databases:
+        kind: postgresql.cnpg.io/Database
+        filter: item.spec.?cluster.?name.orValue("") == object.metadata.name
+      objectStore:
+        kind: barmancloud.cnpg.io/ObjectStore
+        when: variables.objectStoreName != ""
+        name: variables.objectStoreName
+
+    hideColumns: [Instances]
+    columns:
+      - name: Ready
+        description: Ready instances / desired instances
+        value: string(variables.readyCount) + "/" + string(variables.desired)
+      - name: Status
+        type: status
+        description: The cluster's phase
+        value: variables.statusText
+      - name: Postgres
+        description: The PostgreSQL image tag (or major version)
+        value: variables.postgres
+      - name: Storage
+        type: quantity
+        description: Data volume size per instance
+        value: object.spec.?storage.?size
+      - name: Last Backup
+        type: age
+        description: When the last backup succeeded
+        value: variables.lastBackup
+
+    panel:
+      generic: replace
+      sections:
+        - title: Cluster
+          icon: monitor_heart
+          badge:
+            text: variables.statusText
+            severity: variables.phaseSeverity
+          blocks:
+            - type: message
+              severity: error
+              when: object.?status.?currentPrimaryFailingSinceTimestamp.hasValue()
+              title: '"Primary " + variables.primary + " is failing"'
+              text: '"Failing for " + humanDuration(age(object.status.currentPrimaryFailingSinceTimestamp)) + "; the operator fails over once failoverDelay has passed."'
+            - type: message
+              severity: info
+              when: variables.hibernated
+              text: '"Hibernated: the cluster''s pods are deleted and its volumes kept (annotation cnpg.io/hibernation=on)."'
+            - type: message
+              severity: error
+              when: '!variables.hibernated && variables.phaseSeverity == "error"'
+              title: variables.phase
+              text: >-
+                string(object.?status.?phaseReason.orValue(condition(object, "Ready").?message.orValue("")))
+            - type: message
+              severity: warning
+              when: '!variables.hibernated && variables.phaseSeverity == "warning"'
+              title: 'variables.phase != "" ? variables.phase : "Waiting for the operator"'
+              text: >-
+                string(object.?status.?phaseReason.orValue(condition(object, "Ready").?message.orValue("")))
+            - type: message
+              severity: warning
+              when: variables.targetPrimary != "" && variables.primary != "" && variables.targetPrimary != variables.primary
+              text: '"Primary changing from " + variables.primary + " to " + variables.targetPrimary'
+            - type: message
+              severity: warning
+              when: size(object.?status.?unusablePVC.orValue([])) > 0
+              text: '"Unusable volumes: " + object.status.unusablePVC.join(", ")'
+            - type: message
+              severity: warning
+              when: size(object.?status.?danglingPVC.orValue([])) > 0
+              text: '"Dangling volumes (no instance uses them): " + object.status.danglingPVC.join(", ")'
+            - type: message
+              severity: info
+              when: size(object.?status.?resizingPVC.orValue([])) > 0
+              text: '"Resizing volumes: " + object.status.resizingPVC.join(", ")'
+            - type: message
+              severity: warning
+              when: size(object.?status.?managedRolesStatus.?cannotReconcile.orValue({})) > 0
+              title: '"Managed roles that cannot be reconciled"'
+              text: >-
+                object.status.managedRolesStatus.cannotReconcile.map(k, k).sort()
+                  .map(k, k + ": " + object.status.managedRolesStatus.cannotReconcile[k].join("; ")).join("\n")
+            - type: fields
+              items:
+                - label: Phase
+                  type: status
+                  value: 'variables.phase != "" ? variables.phase : "Pending"'
+                  severity: variables.phaseSeverity
+                - label: Description
+                  value: object.spec.?description
+                - label: Primary
+                  value: variables.primary
+                  link: 'variables.primary != "" ? ref("", "Pod", variables.primary) : dyn(null)'
+                  copy: true
+                - label: Primary since
+                  type: age
+                  value: object.?status.?currentPrimaryTimestamp
+                - label: Instances
+                  value: string(variables.readyCount) + " of " + string(variables.desired) + " ready"
+                  severity: 'variables.readyCount >= variables.desired ? "ok" : variables.readyCount == 0 ? "error" : "warning"'
+                - label: Timeline
+                  type: number
+                  value: object.?status.?timelineID
+                - label: Image
+                  value: variables.image
+                  mono: true
+                  copy: true
+                - label: Image catalog
+                  value: >-
+                    object.spec.?imageCatalogRef.hasValue()
+                      ? string(object.spec.imageCatalogRef.kind) + "/" + string(object.spec.imageCatalogRef.name) + " · major " + string(object.spec.imageCatalogRef.major)
+                      : ""
+                  link: >-
+                    object.spec.?imageCatalogRef.hasValue()
+                      ? ref("postgresql.cnpg.io", string(object.spec.imageCatalogRef.kind), string(object.spec.imageCatalogRef.name)) : dyn(null)
+                - label: PostgreSQL major
+                  type: number
+                  value: variables.major
+                - label: Storage
+                  value: >-
+                    string(object.spec.?storage.?size.orValue(object.spec.?storage.?pvcTemplate.?resources.?requests.?storage.orValue("")))
+                      + (object.spec.?storage.?storageClass.hasValue() ? " · " + string(object.spec.storage.storageClass) : "")
+                - label: WAL storage
+                  value: >-
+                    object.spec.?walStorage.hasValue()
+                      ? string(object.spec.walStorage.?size.orValue("")) + (object.spec.walStorage.?storageClass.hasValue() ? " · " + string(object.spec.walStorage.storageClass) : "")
+                      : ""
+                - label: Read-write service
+                  value: object.?status.?writeService
+                  link: 'object.?status.?writeService.hasValue() ? ref("", "Service", object.status.writeService) : dyn(null)'
+                  copy: true
+                - label: Read-only service
+                  value: object.metadata.name + "-ro"
+                  link: ref("", "Service", object.metadata.name + "-ro")
+                  copy: true
+                - label: Read service
+                  value: object.?status.?readService
+                  link: 'object.?status.?readService.hasValue() ? ref("", "Service", object.status.readService) : dyn(null)'
+                - label: Operator plugins
+                  value: >-
+                    object.?status.?pluginStatus.orValue([]).map(p, string(p.name) + (has(p.version) ? " " + string(p.version) : "")).join(", ")
+
+        - title: Instances
+          icon: dns
+          summary: string(variables.readyCount) + "/" + string(variables.desired) + " ready"
+          blocks:
+            - type: table
+              rows: >-
+                object.?status.?instanceNames.orValue([]).map(n, {
+                  "name": string(n),
+                  "role": string(n) == variables.primary ? "Primary" : "Replica",
+                  "state": object.?status.?instancesStatus.orValue({}).map(k, k).filter(k, string(n) in object.status.instancesStatus[k]).join(", "),
+                  "pods": variables.instancePods.filter(p, p.metadata.name == string(n)),
+                  ?"timeline": object.?status.?instancesReportedState[?string(n)].?timeLineID
+                })
+              empty: No instances reported yet.
+              columns:
+                - name: Instance
+                  value: item.name
+                  link: ref("", "Pod", item.name)
+                  mono: true
+                - name: Role
+                  type: status
+                  value: item.role
+                  severity: 'item.role == "Primary" ? "ok" : "info"'
+                - name: Status
+                  type: status
+                  value: 'item.state != "" ? item.state : "unknown"'
+                  severity: >-
+                    item.state == "healthy" ? "ok" : item.state.contains("failed") ? "error" : "warning"
+                - name: Pod
+                  type: status
+                  value: >-
+                    size(item.pods) == 0 ? "Missing" :
+                    has(item.pods[0].metadata.deletionTimestamp) ? "Terminating" :
+                    conditionTrue(item.pods[0], "Ready") ? "Ready" : "Not ready"
+                  severity: >-
+                    size(item.pods) == 0 ? "error" : conditionTrue(item.pods[0], "Ready") ? "ok" : "warning"
+                - name: Restarts
+                  type: number
+                  value: >-
+                    size(item.pods) == 0 ? 0 :
+                    item.pods[0].?status.?containerStatuses.orValue([]).map(c, int(c.restartCount)).sum()
+                - name: Node
+                  value: 'size(item.pods) == 0 ? "" : string(item.pods[0].spec.?nodeName.orValue(""))'
+                  link: 'size(item.pods) > 0 && has(item.pods[0].spec.nodeName) ? ref("", "Node", string(item.pods[0].spec.nodeName)) : dyn(null)'
+                - name: Timeline
+                  type: number
+                  value: item.?timeline
+
+        - title: Replication and HA
+          icon: shield
+          blocks:
+            - type: message
+              severity: info
+              when: object.spec.?replica.?enabled.orValue(false)
+              text: >-
+                "Replica cluster: it follows " + string(object.spec.replica.?source.orValue("an external cluster")) + " and has no primary of its own (its designated primary replays WAL)."
+            - type: fields
+              items:
+                - label: Replicas
+                  type: number
+                  value: variables.desired - 1
+                - label: Synchronous
+                  value: >-
+                    object.spec.?postgresql.?synchronous.hasValue()
+                      ? string(object.spec.postgresql.synchronous.?method.orValue("any")) + " " + string(object.spec.postgresql.synchronous.?number.orValue(1))
+                        + (object.spec.postgresql.synchronous.?dataDurability.hasValue() ? " · durability " + string(object.spec.postgresql.synchronous.dataDurability) : "")
+                      : int(object.spec.?maxSyncReplicas.orValue(0)) > 0
+                        ? "quorum, " + string(object.spec.?minSyncReplicas.orValue(0)) + " to " + string(object.spec.maxSyncReplicas) + " replicas"
+                        : "asynchronous"
+                - label: HA replication slots
+                  type: bool
+                  value: object.spec.?replicationSlots.?highAvailability.?enabled.orValue(true)
+                - label: Primary updates
+                  value: >-
+                    string(object.spec.?primaryUpdateStrategy.orValue("unsupervised")) + " · " + string(object.spec.?primaryUpdateMethod.orValue("restart"))
+                - label: Failover delay
+                  value: string(object.spec.?failoverDelay.orValue(0)) + "s"
+                - label: Pod disruption budget
+                  type: bool
+                  value: object.spec.?enablePDB.orValue(true)
+                - label: Anti-affinity
+                  value: object.spec.?affinity.?podAntiAffinityType.orValue("preferred")
+                - label: Nodes used
+                  type: number
+                  value: object.?status.?topology.?nodesUsed
+                - label: Replica of
+                  value: object.spec.?replica.?source
+                - label: System ID
+                  value: object.?status.?systemID
+                  mono: true
+
+        - title: Backups and WAL archiving
+          icon: backup
+          badge:
+            when: variables.archiving.hasValue() || variables.backupCond.hasValue()
+            text: >-
+              variables.archivingFailing ? "Archiving failing" : variables.backupFailed ? "Backup failed" :
+              variables.backupStale ? "Backup overdue" : "OK"
+            severity: >-
+              variables.archivingFailing || variables.backupFailed ? "error" : variables.backupStale ? "warning" : "ok"
+          blocks:
+            - type: message
+              severity: error
+              when: variables.archivingFailing
+              title: '"Continuous archiving is failing"'
+              text: string(variables.archiving.value().?message.orValue(""))
+            - type: message
+              severity: error
+              when: variables.backupFailed
+              title: '"The last backup failed"'
+              text: string(variables.backupCond.value().?message.orValue(""))
+            - type: message
+              severity: warning
+              when: variables.backupStale
+              text: '"No successful backup for " + humanDuration(age(variables.lastBackup.value()))'
+            - type: message
+              severity: info
+              when: variables.walArchiver == "" && !variables.snapshots && size(related.backups) == 0
+              text: '"No backups: the cluster has no WAL archiver, object store or volume snapshot configuration."'
+            - type: fields
+              items:
+                - label: WAL archiving
+                  type: status
+                  value: >-
+                    !variables.archiving.hasValue() ? "" :
+                    variables.archiving.value().status == "True" ? "Working" : "Failing"
+                  severity: 'variables.archivingFailing ? "error" : "ok"'
+                - label: WAL archiver
+                  value: variables.walArchiver
+                - label: Object store
+                  value: variables.objectStoreName
+                  link: 'variables.objectStoreName != "" ? ref("barmancloud.cnpg.io", "ObjectStore", variables.objectStoreName) : dyn(null)'
+                - label: Volume snapshots
+                  value: 'variables.snapshots ? string(object.spec.backup.volumeSnapshot.?className.orValue("default class")) : ""'
+                - label: Retention
+                  value: >-
+                    object.spec.?backup.?retentionPolicy.or(related.?objectStore.?spec.?retentionPolicy).orValue("")
+                - label: Last successful backup
+                  type: age
+                  value: 'size(variables.lastBackupAny) > 0 ? dyn(variables.lastBackupAny[size(variables.lastBackupAny) - 1]) : dyn(null)'
+                  severity: 'variables.backupStale ? "warning" : "neutral"'
+                - label: Last failed backup
+                  type: age
+                  value: object.?status.?lastFailedBackup
+                - label: First recoverability point
+                  type: timestamp
+                  value: variables.firstRecoverability
+            - type: table
+              when: size(related.scheduledBackups) > 0
+              rows: related.scheduledBackups
+              columns:
+                - name: Scheduled backup
+                  value: item.metadata.name
+                  link: ref(item)
+                - name: Schedule
+                  value: item.spec.schedule
+                  mono: true
+                - name: Method
+                  value: item.spec.?method.orValue("barmanObjectStore")
+                - name: Last
+                  type: age
+                  value: item.?status.?lastScheduleTime
+                - name: Next
+                  type: until
+                  value: 'item.spec.?suspend.orValue(false) ? dyn(null) : dyn(item.?status.?nextScheduleTime.orValue(null))'
+                - name: State
+                  type: status
+                  value: 'item.spec.?suspend.orValue(false) ? "Suspended" : "Active"'
+            - type: table
+              when: size(related.backups) > 0
+              rows: related.backups
+              sortBy: Started
+              descending: true
+              limit: 5
+              columns:
+                - name: Backup
+                  value: item.metadata.name
+                  link: ref(item)
+                - name: Phase
+                  type: status
+                  value: string(item.?status.?phase.orValue("pending"))
+                - name: Method
+                  value: item.?status.?method.or(item.spec.?method).orValue("barmanObjectStore")
+                - name: Started
+                  type: age
+                  value: item.?status.?startedAt.orValue(item.metadata.creationTimestamp)
+                - name: Took
+                  value: >-
+                    item.?status.?startedAt.hasValue() && item.?status.?stoppedAt.hasValue()
+                      ? humanDuration(timestamp(item.status.stoppedAt) - timestamp(item.status.startedAt)) : ""
+                - name: Error
+                  detail: true
+                  value: item.?status.?error.orValue("")
+
+        - title: Certificates
+          icon: verified
+          when: size(variables.certs) > 0
+          summary: >-
+            "next expiry in " + humanDuration(until(variables.certs.map(c, c.at).sort()[0]))
+          blocks:
+            - type: table
+              rows: variables.certs
+              sortBy: Expires
+              columns:
+                - name: Secret
+                  value: item.name
+                  link: ref("", "Secret", item.name)
+                - name: Expires
+                  type: until
+                  value: item.at
+                  severity: >-
+                    until(item.at) < duration("0s") ? "error" : until(item.at) < duration("144h") ? "warning" : "ok"
+            - type: fields
+              items:
+                - label: Server TLS secret
+                  value: object.?status.?certificates.?serverTLSSecret
+                - label: Server CA secret
+                  value: object.?status.?certificates.?serverCASecret
+                - label: Client CA secret
+                  value: object.?status.?certificates.?clientCASecret
+                - label: Replication TLS secret
+                  value: object.?status.?certificates.?replicationTLSSecret
+
+        - title: Poolers
+          icon: hub
+          when: size(related.poolers) > 0
+          summary: string(size(related.poolers))
+          blocks:
+            - type: table
+              rows: related.poolers
+              columns:
+                - name: Pooler
+                  value: item.metadata.name
+                  link: ref(item)
+                - name: Type
+                  value: item.spec.?type.orValue("rw")
+                - name: Pool mode
+                  value: item.spec.?pgbouncer.?poolMode.orValue("session")
+                - name: Instances
+                  value: string(item.?status.?instances.orValue(0)) + "/" + string(item.spec.?instances.orValue(1))
+                - name: Paused
+                  type: bool
+                  value: item.spec.?pgbouncer.?paused.orValue(false)
+
+        - title: Databases
+          icon: storage
+          when: size(related.databases) > 0
+          summary: string(size(related.databases))
+          blocks:
+            - type: table
+              rows: related.databases
+              columns:
+                - name: Database
+                  value: item.spec.name
+                  link: ref(item)
+                - name: Owner
+                  value: item.spec.?owner.orValue("")
+                - name: Ensure
+                  value: item.spec.?ensure.orValue("present")
+                - name: Applied
+                  type: status
+                  value: >-
+                    !item.?status.?applied.hasValue() ? "Pending" : item.status.applied ? "Applied" : "Failed"
+                - name: Message
+                  detail: true
+                  value: item.?status.?message.orValue("")
+
+        - title: PostgreSQL parameters
+          icon: tune
+          collapsed: true
+          when: size(object.spec.?postgresql.?parameters.orValue({})) > 0
+          summary: string(size(object.spec.postgresql.parameters))
+          blocks:
+            - type: settings
+              value: object.spec.postgresql.parameters
+              limit: 50
+
+        - title: Conditions
+          icon: checklist
+          blocks:
+            - type: conditions
+
+    alerts:
+      - id: cluster-unhealthy
+        label: PostgreSQL clusters not healthy
+        severity: error
+        when: variables.unhealthy
+        message: >-
+          variables.phase + (object.?status.?phaseReason.hasValue() ? ": " + string(object.status.phaseReason) : "")
+        since: variables.unhealthySince
+      - id: instances-not-ready
+        label: PostgreSQL clusters with instances not ready
+        severity: warning
+        when: variables.instancesDown
+        message: string(variables.readyCount) + " of " + string(variables.desired) + " instances ready"
+        since: variables.unhealthySince
+      - id: archiving-failing
+        label: PostgreSQL WAL archiving failing
+        severity: error
+        when: variables.archivingFailing
+        message: string(variables.archiving.value().?message.orValue("Continuous archiving is failing"))
+        since: variables.archiving.value().?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+      - id: backup-failed
+        label: PostgreSQL backups failed
+        severity: error
+        when: variables.backupFailed
+        message: string(variables.backupCond.value().?message.orValue("The last backup failed"))
+        since: variables.backupCond.value().?lastTransitionTime.orValue(object.metadata.creationTimestamp)
+      - id: backup-overdue
+        label: PostgreSQL backups older than 2 days
+        severity: warning
+        when: variables.backupStale
+        message: '"Last successful backup " + humanDuration(age(variables.lastBackup.value())) + " ago"'
+        since: variables.lastBackup.value()
+      - id: certificates-expiring
+        label: PostgreSQL certificates expiring within 6 days
+        severity: warning
+        when: size(variables.certsExpiring) > 0
+        message: >-
+          variables.certsExpiring.map(c, c.name + (until(c.at) < duration("0s") ? " expired " + humanDuration(age(c.at)) + " ago" : " expires in " + humanDuration(until(c.at)))).join(", ")
+
+    status:
+      label: Clusters
+      counts:
+        - label: not healthy
+          severity: error
+          when: variables.unhealthy
+        - label: archiving failing
+          severity: error
+          when: variables.archivingFailing
+        - label: backup failed or overdue
+          severity: warning
+          when: variables.backupFailed || variables.backupStale
+
+  postgresql.cnpg.io/Backup:
+    icon: backup
+    variables:
+      phase: string(object.?status.?phase.orValue(""))
+      started: object.?status.?startedAt
+      stopped: object.?status.?stoppedAt
+      took: >-
+        variables.started.hasValue() && variables.stopped.hasValue()
+          ? humanDuration(timestamp(variables.stopped.value()) - timestamp(variables.started.value())) : ""
+      scheduledBy: object.metadata.?labels[?"cnpg.io/scheduled-backup"]
+    columns:
+      - name: Phase
+        type: status
+        value: 'variables.phase != "" ? variables.phase : "pending"'
+      - name: Started
+        type: age
+        value: variables.started
+      - name: Took
+        description: How long the backup ran
+        value: variables.took
+    panel:
+      generic: replace
+      sections:
+        - title: Backup
+          icon: backup
+          badge:
+            text: 'variables.phase != "" ? variables.phase : "pending"'
+            severity: >-
+              variables.phase == "completed" ? "ok" : variables.phase == "failed" ? "error" :
+              variables.phase == "" || variables.phase == "pending" ? "neutral" : "info"
+          blocks:
+            - type: message
+              severity: error
+              when: variables.phase == "failed"
+              title: '"Backup failed"'
+              text: string(object.?status.?error.orValue(""))
+            - type: fields
+              items:
+                - label: Cluster
+                  value: object.spec.cluster.name
+                  link: ref("postgresql.cnpg.io", "Cluster", object.spec.cluster.name)
+                - label: Scheduled by
+                  value: variables.scheduledBy
+                  link: 'variables.scheduledBy.hasValue() ? ref("postgresql.cnpg.io", "ScheduledBackup", variables.scheduledBy.value()) : dyn(null)'
+                - label: Method
+                  value: object.?status.?method.or(object.spec.?method).orValue("barmanObjectStore")
+                - label: Plugin
+                  value: >-
+                    object.spec.?pluginConfiguration.?name.orValue("")
+                      + (object.?status.?pluginMetadata.?version.hasValue() ? " " + string(object.status.pluginMetadata.version) : "")
+                - label: Target
+                  value: object.spec.?target
+                - label: Online
+                  type: bool
+                  value: object.?status.?online
+                - label: Started
+                  type: timestamp
+                  value: variables.started
+                - label: Stopped
+                  type: timestamp
+                  value: variables.stopped
+                - label: Took
+                  value: variables.took
+                - label: Instance
+                  value: object.?status.?instanceID.?podName
+                  link: 'object.?status.?instanceID.?podName.hasValue() ? ref("", "Pod", object.status.instanceID.podName) : dyn(null)'
+                - label: PostgreSQL major
+                  type: number
+                  value: object.?status.?majorVersion
+                - label: Timeline
+                  value: object.?status.?pluginMetadata.?timeline
+        - title: WAL and storage
+          icon: storage
+          when: object.?status.?beginWal.hasValue() || object.?status.?backupId.hasValue() || object.?status.?snapshotBackupStatus.hasValue()
+          blocks:
+            - type: fields
+              items:
+                - label: Backup ID
+                  value: object.?status.?backupId
+                  mono: true
+                  copy: true
+                - label: Backup name
+                  value: object.?status.?backupName
+                  mono: true
+                - label: Begin WAL
+                  value: object.?status.?beginWal
+                  mono: true
+                - label: End WAL
+                  value: object.?status.?endWal
+                  mono: true
+                - label: Begin LSN
+                  value: object.?status.?beginLSN
+                  mono: true
+                - label: End LSN
+                  value: object.?status.?endLSN
+                  mono: true
+                - label: Destination
+                  value: object.?status.?destinationPath
+                  mono: true
+                  copy: true
+                - label: Server name
+                  value: object.?status.?serverName
+            - type: table
+              when: size(object.?status.?snapshotBackupStatus.?elements.orValue([])) > 0
+              rows: object.status.snapshotBackupStatus.elements
+              columns:
+                - name: Volume snapshot
+                  value: item.name
+                  link: ref("snapshot.storage.k8s.io", "VolumeSnapshot", item.name)
+                - name: Type
+                  value: item.?type.orValue("")
+
+  postgresql.cnpg.io/ScheduledBackup:
+    icon: schedule
+    variables:
+      suspended: object.spec.?suspend.orValue(false)
+    related:
+      backups:
+        kind: postgresql.cnpg.io/Backup
+        selector: '{"cnpg.io/scheduled-backup": object.metadata.name}'
+    columns:
+      - name: Schedule
+        value: object.spec.schedule
+      - name: Method
+        value: object.spec.?method.orValue("barmanObjectStore")
+      - name: Next
+        type: until
+        value: 'variables.suspended ? dyn(null) : dyn(object.?status.?nextScheduleTime.orValue(null))'
+      - name: Suspended
+        type: bool
+        value: variables.suspended
+    panel:
+      generic: replace
+      sections:
+        - title: Scheduled backup
+          icon: schedule
+          badge:
+            text: 'variables.suspended ? "Suspended" : "Active"'
+            severity: 'variables.suspended ? "warning" : "ok"'
+          blocks:
+            - type: fields
+              items:
+                - label: Cluster
+                  value: object.spec.cluster.name
+                  link: ref("postgresql.cnpg.io", "Cluster", object.spec.cluster.name)
+                - label: Schedule
+                  value: object.spec.schedule
+                  mono: true
+                - label: Method
+                  value: object.spec.?method.orValue("barmanObjectStore")
+                - label: Plugin
+                  value: object.spec.?pluginConfiguration.?name
+                - label: Target
+                  value: object.spec.?target
+                - label: Backups owned by
+                  value: object.spec.?backupOwnerReference.orValue("none")
+                - label: Immediate
+                  type: bool
+                  value: object.spec.?immediate.orValue(false)
+                - label: Last scheduled
+                  type: age
+                  value: object.?status.?lastScheduleTime
+                - label: Next
+                  type: until
+                  value: 'variables.suspended ? dyn(null) : dyn(object.?status.?nextScheduleTime.orValue(null))'
+        - title: Backups
+          icon: history
+          summary: string(size(related.backups))
+          blocks:
+            - type: table
+              rows: related.backups
+              sortBy: Started
+              descending: true
+              limit: 10
+              empty: No backups yet.
+              columns:
+                - name: Backup
+                  value: item.metadata.name
+                  link: ref(item)
+                - name: Phase
+                  type: status
+                  value: string(item.?status.?phase.orValue("pending"))
+                - name: Started
+                  type: age
+                  value: item.?status.?startedAt.orValue(item.metadata.creationTimestamp)
+                - name: Took
+                  value: >-
+                    item.?status.?startedAt.hasValue() && item.?status.?stoppedAt.hasValue()
+                      ? humanDuration(timestamp(item.status.stoppedAt) - timestamp(item.status.startedAt)) : ""
+                - name: Error
+                  detail: true
+                  value: item.?status.?error.orValue("")
+
+  postgresql.cnpg.io/Pooler:
+    icon: hub
+    variables:
+      desired: int(object.spec.?instances.orValue(1))
+      paused: object.spec.?pgbouncer.?paused.orValue(false)
+    related:
+      deployment:
+        kind: apps/Deployment
+        name: object.metadata.name
+      pods:
+        kind: /Pod
+        selector: '{"cnpg.io/poolerName": object.metadata.name}'
+    columns:
+      - name: Pool Mode
+        value: object.spec.?pgbouncer.?poolMode.orValue("session")
+      - name: Instances
+        type: number
+        value: variables.desired
+      - name: Paused
+        type: bool
+        value: variables.paused
+    panel:
+      generic: replace
+      sections:
+        - title: Pooler
+          icon: hub
+          badge:
+            when: has(related.deployment) || variables.paused
+            text: >-
+              variables.paused ? "Paused" :
+              string(related.deployment.?status.?readyReplicas.orValue(0)) + "/" + string(variables.desired) + " ready"
+            severity: >-
+              variables.paused ? "warning" :
+              int(related.deployment.?status.?readyReplicas.orValue(0)) >= variables.desired ? "ok" :
+              int(related.deployment.?status.?readyReplicas.orValue(0)) == 0 ? "error" : "warning"
+          blocks:
+            - type: message
+              severity: warning
+              when: variables.paused
+              text: '"PgBouncer is paused: new connections wait until it is resumed."'
+            - type: fields
+              items:
+                - label: Cluster
+                  value: object.spec.cluster.name
+                  link: ref("postgresql.cnpg.io", "Cluster", object.spec.cluster.name)
+                - label: Type
+                  value: object.spec.?type.orValue("rw")
+                - label: Pool mode
+                  value: object.spec.?pgbouncer.?poolMode.orValue("session")
+                - label: Instances
+                  value: >-
+                    string(related.?deployment.?status.?readyReplicas.orValue(0)) + " of " + string(variables.desired) + " ready"
+                - label: Service
+                  value: object.metadata.name
+                  link: ref("", "Service", object.metadata.name)
+                  copy: true
+                - label: Deployment
+                  value: related.?deployment.?metadata.?name
+                  link: 'has(related.deployment) ? ref(related.deployment) : dyn(null)'
+                - label: Auth query
+                  value: object.spec.?pgbouncer.?authQuery
+                  mono: true
+            - type: table
+              when: size(related.pods) > 0
+              rows: related.pods
+              columns:
+                - name: Pod
+                  value: item.metadata.name
+                  link: ref(item)
+                - name: Ready
+                  type: status
+                  value: 'conditionTrue(item, "Ready") ? "Ready" : string(item.?status.?phase.orValue("Pending"))'
+                - name: Node
+                  value: item.spec.?nodeName.orValue("")
+        - title: PgBouncer parameters
+          icon: tune
+          when: size(object.spec.?pgbouncer.?parameters.orValue({})) > 0
+          blocks:
+            - type: settings
+              value: object.spec.pgbouncer.parameters
+
+  postgresql.cnpg.io/Database:
+    icon: storage
+    variables: &appliedVars
+      applied: object.?status.?applied
+      appliedText: >-
+        !variables.applied.hasValue() ? "Pending" : variables.applied.value() ? "Applied" : "Failed"
+      notApplied: variables.applied.hasValue() && !variables.applied.value()
+    columns:
+      - name: Applied
+        type: status
+        value: variables.appliedText
+      - name: Owner
+        value: object.spec.?owner.orValue("")
+      - name: Ensure
+        value: object.spec.?ensure.orValue("present")
+    panel:
+      generic: replace
+      sections:
+        - title: Database
+          icon: storage
+          badge: &appliedBadge
+            text: variables.appliedText
+            severity: 'variables.notApplied ? "error" : variables.applied.hasValue() ? "ok" : "neutral"'
+          blocks:
+            - &appliedMessage
+              type: message
+              severity: error
+              when: variables.notApplied
+              title: '"Not applied"'
+              text: string(object.?status.?message.orValue(""))
+            - type: fields
+              items:
+                - label: Cluster
+                  value: object.spec.cluster.name
+                  link: ref("postgresql.cnpg.io", "Cluster", object.spec.cluster.name)
+                - label: Name
+                  value: object.spec.name
+                  mono: true
+                - label: Owner
+                  value: object.spec.?owner
+                - label: Ensure
+                  value: object.spec.?ensure.orValue("present")
+                - label: Reclaim policy
+                  value: object.spec.?databaseReclaimPolicy.orValue("retain")
+                - label: Encoding
+                  value: object.spec.?encoding
+                - label: Locale
+                  value: object.spec.?locale.or(object.spec.?localeCollate).or(object.spec.?icuLocale)
+                - label: Template
+                  value: object.spec.?template
+                - label: Tablespace
+                  value: object.spec.?tablespace
+                - label: Connection limit
+                  type: number
+                  value: object.spec.?connectionLimit
+                - label: Allow connections
+                  type: bool
+                  value: object.spec.?allowConnections
+        - title: Extensions and schemas
+          icon: extension
+          when: size(object.spec.?extensions.orValue([])) + size(object.spec.?schemas.orValue([])) > 0
+          blocks:
+            - type: table
+              rows: >-
+                object.spec.?extensions.orValue([]).map(e, {"kind": "extension", "name": string(e.name), "detail": string(e.?version.orValue("")), "ensure": string(e.?ensure.orValue("present")),
+                  "status": object.?status.?extensions.orValue([]).filter(s, s.name == e.name)})
+                + object.spec.?schemas.orValue([]).map(e, {"kind": "schema", "name": string(e.name), "detail": string(e.?owner.orValue("")), "ensure": string(e.?ensure.orValue("present")),
+                  "status": object.?status.?schemas.orValue([]).filter(s, s.name == e.name)})
+              columns:
+                - name: Name
+                  value: item.name
+                  mono: true
+                - name: Kind
+                  value: item.kind
+                - name: Version / owner
+                  value: item.detail
+                - name: Ensure
+                  value: item.ensure
+                - name: Applied
+                  type: status
+                  value: >-
+                    size(item.status) == 0 ? "Pending" : item.status[0].?applied.orValue(false) ? "Applied" : "Failed"
+                - name: Message
+                  detail: true
+                  value: 'size(item.status) == 0 ? "" : string(item.status[0].?message.orValue(""))'
+    alerts: &appliedAlerts
+      - id: not-applied
+        label: PostgreSQL databases, publications or subscriptions not applied
+        severity: warning
+        when: variables.notApplied
+        message: string(object.?status.?message.orValue("Not applied"))
+
+  postgresql.cnpg.io/Publication:
+    icon: upload
+    variables: *appliedVars
+    columns:
+      - name: Applied
+        type: status
+        value: variables.appliedText
+      - name: Database
+        value: object.spec.dbname
+    panel:
+      generic: replace
+      sections:
+        - title: Publication
+          icon: upload
+          badge: *appliedBadge
+          blocks:
+            - *appliedMessage
+            - type: fields
+              items:
+                - label: Cluster
+                  value: object.spec.cluster.name
+                  link: ref("postgresql.cnpg.io", "Cluster", object.spec.cluster.name)
+                - label: Name
+                  value: object.spec.name
+                  mono: true
+                - label: Database
+                  value: object.spec.dbname
+                - label: Publishes
+                  value: >-
+                    object.spec.target.?allTables.orValue(false) ? "all tables" :
+                    string(size(object.spec.target.?objects.orValue([]))) + " object(s)"
+                - label: Reclaim policy
+                  value: object.spec.?publicationReclaimPolicy.orValue("retain")
+            - type: code
+              when: size(object.spec.target.?objects.orValue([])) > 0
+              value: object.spec.target.objects
+              language: yaml
+            - type: settings
+              when: size(object.spec.?parameters.orValue({})) > 0
+              value: object.spec.parameters
+    alerts: *appliedAlerts
+
+  postgresql.cnpg.io/Subscription:
+    icon: sync_alt
+    variables: *appliedVars
+    columns:
+      - name: Applied
+        type: status
+        value: variables.appliedText
+      - name: Database
+        value: object.spec.dbname
+      - name: Publication
+        value: object.spec.publicationName
+      - name: Source
+        value: object.spec.externalClusterName
+    panel:
+      generic: replace
+      sections:
+        - title: Subscription
+          icon: sync_alt
+          badge: *appliedBadge
+          blocks:
+            - *appliedMessage
+            - type: fields
+              items:
+                - label: Cluster
+                  value: object.spec.cluster.name
+                  link: ref("postgresql.cnpg.io", "Cluster", object.spec.cluster.name)
+                - label: Name
+                  value: object.spec.name
+                  mono: true
+                - label: Database
+                  value: object.spec.dbname
+                - label: Source cluster
+                  value: object.spec.externalClusterName
+                - label: Publication
+                  value: object.spec.publicationName
+                - label: Publication database
+                  value: object.spec.?publicationDBName
+                - label: Reclaim policy
+                  value: object.spec.?subscriptionReclaimPolicy.orValue("retain")
+            - type: settings
+              when: size(object.spec.?parameters.orValue({})) > 0
+              value: object.spec.parameters
+    alerts: *appliedAlerts
+
+  postgresql.cnpg.io/ImageCatalog: &catalog
+    icon: layers
+    columns:
+      - name: Majors
+        description: PostgreSQL major versions in the catalog
+        value: object.spec.?images.orValue([]).map(i, int(i.major)).sort().map(m, string(m)).join(", ")
+    panel:
+      generic: replace
+      sections:
+        - title: Images
+          icon: layers
+          summary: string(size(object.spec.?images.orValue([])))
+          blocks:
+            - type: table
+              rows: object.spec.?images.orValue([])
+              sortBy: Major
+              descending: true
+              columns:
+                - name: Major
+                  type: number
+                  value: item.major
+                - name: Image
+                  value: item.image
+                  mono: true
+  postgresql.cnpg.io/ClusterImageCatalog: *catalog
+
+  barmancloud.cnpg.io/ObjectStore:
+    icon: cloud
+    variables:
+      windows: object.?status.?serverRecoveryWindow.orValue({})
+    columns:
+      - name: Retention
+        value: object.spec.?retentionPolicy.orValue("")
+      - name: Destination
+        value: object.spec.?configuration.?destinationPath.orValue("")
+    panel:
+      generic: collapse
+      sections:
+        - title: Object store
+          icon: cloud
+          blocks:
+            - type: fields
+              items:
+                - label: Destination
+                  value: object.spec.?configuration.?destinationPath
+                  mono: true
+                  copy: true
+                - label: Endpoint
+                  value: object.spec.?configuration.?endpointURL
+                  mono: true
+                - label: Retention
+                  value: object.spec.?retentionPolicy
+                - label: WAL compression
+                  value: object.spec.?configuration.?wal.?compression
+                - label: Data compression
+                  value: object.spec.?configuration.?data.?compression
+        - title: Recovery windows
+          icon: history
+          when: size(variables.windows) > 0
+          blocks:
+            - type: table
+              rows: >-
+                variables.windows.map(k, k).sort().map(k, {"server": k, "w": variables.windows[k]})
+              columns:
+                - name: Server
+                  value: item.server
+                - name: First recoverability point
+                  type: timestamp
+                  value: item.w.?firstRecoverabilityPoint
+                - name: Last backup
+                  type: age
+                  value: item.w.?lastSuccessfulBackupTime
+                - name: Last failure
+                  type: age
+                  value: item.w.?lastFailedBackupTime
+        - title: Configuration
+          icon: settings
+          collapsed: true
+          blocks:
+            # Credentials show as Secret/<name> · <key> references, never values.
+            - type: settings
+              value: object.spec.?configuration.orValue({})
+
+  # A CloudNativePG instance or PgBouncer pod: its cluster and role, after
+  # the pod's status.
+  /Pod:
+    variables:
+      cluster: string(object.metadata.?labels[?"cnpg.io/cluster"].orValue(""))
+      pooler: string(object.metadata.?labels[?"cnpg.io/poolerName"].orValue(""))
+      role: string(object.metadata.?labels[?"cnpg.io/instanceRole"].or(object.metadata.?labels[?"role"]).orValue(""))
+      jobRole: string(object.metadata.?labels[?"cnpg.io/jobRole"].orValue(""))
+    related:
+      cluster:
+        kind: postgresql.cnpg.io/Cluster
+        when: variables.cluster != ""
+        name: variables.cluster
+    panel:
+      sections:
+        - title: CloudNativePG
+          icon: storage
+          after: status
+          when: variables.cluster != "" || variables.pooler != ""
+          badge:
+            when: variables.role != "" || variables.pooler != ""
+            text: >-
+              variables.pooler != "" ? "PgBouncer" : variables.role == "primary" ? "Primary" : "Replica"
+            severity: 'variables.role == "primary" ? "ok" : "info"'
+          blocks:
+            - type: fields
+              items:
+                - label: Cluster
+                  value: variables.cluster
+                  link: 'variables.cluster != "" ? ref("postgresql.cnpg.io", "Cluster", variables.cluster) : dyn(null)'
+                - label: Cluster status
+                  type: status
+                  value: related.?cluster.?status.?phase
+                - label: Role
+                  value: >-
+                    variables.role == "primary" ? "primary" : variables.role == "replica" ? "replica" : ""
+                - label: Job
+                  value: 'variables.jobRole'
+                - label: Pooler
+                  value: variables.pooler
+                  link: 'variables.pooler != "" ? ref("postgresql.cnpg.io", "Pooler", variables.pooler) : dyn(null)'
+                - label: Timeline
+                  type: number
+                  value: related.?cluster.?status.?instancesReportedState[?object.metadata.name].?timeLineID
+                - label: Instance status
+                  value: >-
+                    related.?cluster.?status.?instancesStatus.orValue({}).map(k, k).filter(k, object.metadata.name in related.cluster.status.instancesStatus[k]).join(", ")

@@ -1,0 +1,83 @@
+# A cluster that has been failing over for 20 minutes: one instance is
+# down, the primary is moving, and a replica's pod is missing.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-orders
+  namespace: db
+  uid: 11111111-0000-0000-0000-000000000002
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  instances: 3
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ClusterImageCatalog
+    name: postgresql-standard
+    major: 17
+  storage:
+    size: 50Gi
+  walStorage:
+    size: 10Gi
+status:
+  phase: Failing over
+  phaseReason: Failing over from pg-orders-1 to pg-orders-2
+  instances: 3
+  readyInstances: 1
+  currentPrimary: pg-orders-1
+  targetPrimary: pg-orders-2
+  currentPrimaryFailingSinceTimestamp: "2025-12-31T23:40:00Z"
+  timelineID: 4
+  image: ghcr.io/cloudnative-pg/postgresql@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  pgDataImageInfo:
+    majorVersion: 17
+  instanceNames: [pg-orders-1, pg-orders-2, pg-orders-3]
+  instancesStatus:
+    failed: [pg-orders-1]
+    healthy: [pg-orders-2]
+    replicating: [pg-orders-3]
+  writeService: pg-orders-rw
+  readService: pg-orders-r
+  unusablePVC: [pg-orders-1]
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: ClusterIsNotReady
+      message: Cluster Is Not Ready
+      lastTransitionTime: "2025-12-31T23:40:00Z"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-orders-2
+  namespace: db
+  labels: {cnpg.io/cluster: pg-orders, cnpg.io/instanceRole: replica, cnpg.io/podRole: instance}
+spec:
+  nodeName: node-b
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: postgres, ready: true, restartCount: 0}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-orders-3
+  namespace: db
+  labels: {cnpg.io/cluster: pg-orders, cnpg.io/instanceRole: replica, cnpg.io/podRole: instance}
+spec:
+  nodeName: node-c
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "False"}]
+  containerStatuses: [{name: postgres, ready: false, restartCount: 4}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-orders-3-join-abcde
+  namespace: db
+  labels: {cnpg.io/cluster: pg-orders, cnpg.io/jobRole: join}
+spec:
+  nodeName: node-c
+status:
+  phase: Succeeded

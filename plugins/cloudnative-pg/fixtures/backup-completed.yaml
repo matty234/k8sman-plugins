@@ -1,0 +1,29 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: pg-main-daily-20251231000000
+  namespace: db
+  creationTimestamp: "2025-12-31T00:00:00Z"
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/scheduled-backup: pg-main-daily}
+spec:
+  cluster: {name: pg-main}
+  method: plugin
+  pluginConfiguration: {name: barman-cloud.cloudnative-pg.io}
+status:
+  phase: completed
+  method: plugin
+  online: true
+  majorVersion: 18
+  backupId: 20251231T000005
+  backupName: backup-20251231000005
+  beginWal: "000000020000000A00000010"
+  endWal: "000000020000000A00000010"
+  beginLSN: A/10000028
+  endLSN: A/1000EAC8
+  instanceID: {podName: pg-main-2}
+  pluginMetadata:
+    name: barman-cloud.cloudnative-pg.io
+    version: 0.15.1
+    timeline: "2"
+  startedAt: "2025-12-31T00:00:05Z"
+  stoppedAt: "2025-12-31T00:01:05Z"

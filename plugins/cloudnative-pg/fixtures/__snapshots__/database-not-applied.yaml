@@ -1,0 +1,83 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: postgresql.cnpg.io/Database db/pg-main-reports
+columns:
+  - name: Applied
+    value: Failed
+  - name: Owner
+    value: reporter
+  - name: Ensure
+    value: present
+panel:
+  sections:
+    - badge:
+        severity: error
+        text: Failed
+      blocks:
+        - severity: error
+          text: 'while creating database "reports": role "reporter" does not exist'
+          title: Not applied
+          type: message
+        - items:
+            - label: Cluster
+              link:
+                group: postgresql.cnpg.io
+                kind: Cluster
+                name: pg-main
+                namespace: db
+              type: text
+              value: pg-main
+            - label: Name
+              mono: true
+              type: text
+              value: reports
+            - label: Owner
+              type: text
+              value: reporter
+            - label: Ensure
+              type: text
+              value: present
+            - label: Reclaim policy
+              type: text
+              value: retain
+          type: fields
+      icon: storage
+      title: Database
+    - blocks:
+        - columns:
+            - mono: true
+              name: Name
+              type: text
+            - name: Kind
+              type: text
+            - name: Version / owner
+              type: text
+            - name: Ensure
+              type: text
+            - name: Applied
+              type: status
+            - detail: true
+              name: Message
+              type: text
+          limit: 20
+          rows:
+            - - value: pg_stat_statements
+              - value: extension
+              - value: ""
+              - value: present
+              - value: Pending
+              - value: ""
+            - - value: staging
+              - value: schema
+              - value: reporter
+              - value: present
+              - value: Pending
+              - value: ""
+          total: 2
+          type: table
+      icon: extension
+      title: Extensions and schemas
+alerts:
+  - id: not-applied
+    message: 'while creating database "reports": role "reporter" does not exist'
+    section: custom
+    severity: warning

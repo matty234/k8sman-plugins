@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-main-1
+  namespace: db
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/instanceName: pg-main-1, cnpg.io/instanceRole: primary, cnpg.io/podRole: instance, role: primary}
+spec:
+  nodeName: node-a
+  containers: [{name: postgres, image: ghcr.io/cloudnative-pg/postgresql:18.1-system-trixie}]
+status:
+  phase: Running
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-main
+  namespace: db
+spec:
+  instances: 3
+status:
+  phase: Cluster in healthy state
+  instancesStatus:
+    healthy: [pg-main-1, pg-main-2, pg-main-3]
+  instancesReportedState:
+    pg-main-1: {isPrimary: true, timeLineID: 2}

@@ -1,0 +1,41 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: pg-main-daily
+  namespace: db
+spec:
+  cluster: {name: pg-main}
+  schedule: "0 0 0 * * *"
+  method: plugin
+  pluginConfiguration: {name: barman-cloud.cloudnative-pg.io}
+  backupOwnerReference: self
+status:
+  lastScheduleTime: "2025-12-31T00:00:00Z"
+  nextScheduleTime: "2026-01-01T00:00:00Z"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: pg-main-daily-20251231000000
+  namespace: db
+  creationTimestamp: "2025-12-31T00:00:00Z"
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/scheduled-backup: pg-main-daily}
+spec:
+  cluster: {name: pg-main}
+status:
+  phase: completed
+  startedAt: "2025-12-31T00:00:05Z"
+  stoppedAt: "2025-12-31T00:01:05Z"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: pg-main-daily-20251230000000
+  namespace: db
+  creationTimestamp: "2025-12-30T00:00:00Z"
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/scheduled-backup: pg-main-daily}
+spec:
+  cluster: {name: pg-main}
+status:
+  phase: failed
+  error: "can't execute backup: exit status 4"

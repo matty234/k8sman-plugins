@@ -1,0 +1,56 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: postgresql.cnpg.io/Backup db/pg-main-daily-20251201000000
+columns:
+  - name: Phase
+    value: failed
+  - name: Started
+    value: null
+  - name: Took
+    value: ""
+panel:
+  sections:
+    - badge:
+        severity: error
+        text: failed
+      blocks:
+        - severity: error
+          text: 'requested plugin is not available: barman-cloud.cloudnative-pg.io'
+          title: Backup failed
+          type: message
+        - items:
+            - label: Cluster
+              link:
+                group: postgresql.cnpg.io
+                kind: Cluster
+                name: pg-main
+                namespace: db
+              type: text
+              value: pg-main
+            - label: Scheduled by
+              link:
+                group: postgresql.cnpg.io
+                kind: ScheduledBackup
+                name: pg-main-daily
+                namespace: db
+              type: text
+              value: pg-main-daily
+            - label: Method
+              type: text
+              value: plugin
+            - label: Plugin
+              type: text
+              value: barman-cloud.cloudnative-pg.io
+            - label: Instance
+              link:
+                group: ""
+                kind: Pod
+                name: pg-main-2
+                namespace: db
+              type: text
+              value: pg-main-2
+            - label: PostgreSQL major
+              type: number
+              value: 18
+          type: fields
+      icon: backup
+      title: Backup

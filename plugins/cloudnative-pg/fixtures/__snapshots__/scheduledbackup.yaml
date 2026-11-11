@@ -1,0 +1,93 @@
+# Written by `k8sman-server plugin test --update`: review changes before committing.
+object: postgresql.cnpg.io/ScheduledBackup db/pg-main-daily
+columns:
+  - name: Schedule
+    value: 0 0 0 * * *
+  - name: Method
+    value: plugin
+  - name: Next
+    value: "2026-01-01T00:00:00Z"
+  - name: Suspended
+    value: false
+panel:
+  refresh: 5
+  sections:
+    - badge:
+        severity: ok
+        text: Active
+      blocks:
+        - items:
+            - label: Cluster
+              link:
+                group: postgresql.cnpg.io
+                kind: Cluster
+                name: pg-main
+                namespace: db
+              type: text
+              value: pg-main
+            - label: Schedule
+              mono: true
+              type: text
+              value: 0 0 0 * * *
+            - label: Method
+              type: text
+              value: plugin
+            - label: Plugin
+              type: text
+              value: barman-cloud.cloudnative-pg.io
+            - label: Backups owned by
+              type: text
+              value: self
+            - label: Immediate
+              type: bool
+              value: false
+            - label: Last scheduled
+              type: age
+              value: "2025-12-31T00:00:00Z"
+            - label: Next
+              type: until
+              value: "2026-01-01T00:00:00Z"
+          type: fields
+      icon: schedule
+      title: Scheduled backup
+    - blocks:
+        - columns:
+            - name: Backup
+              type: text
+            - name: Phase
+              type: status
+            - name: Started
+              type: age
+            - name: Took
+              type: text
+            - detail: true
+              name: Error
+              type: text
+          empty: No backups yet.
+          limit: 10
+          rows:
+            - - link:
+                  group: postgresql.cnpg.io
+                  kind: Backup
+                  name: pg-main-daily-20251231000000
+                  namespace: db
+                value: pg-main-daily-20251231000000
+              - value: completed
+              - value: "2025-12-31T00:00:05Z"
+              - value: 60s
+              - value: ""
+            - - link:
+                  group: postgresql.cnpg.io
+                  kind: Backup
+                  name: pg-main-daily-20251230000000
+                  namespace: db
+                value: pg-main-daily-20251230000000
+              - value: failed
+              - value: "2025-12-30T00:00:00Z"
+              - value: ""
+              - value: 'can''t execute backup: exit status 4'
+          total: 2
+          type: table
+      icon: history
+      summary: "2"
+      title: Backups

@@ -1,0 +1,218 @@
+# A healthy three-instance cluster archiving WAL through the Barman Cloud
+# plugin, with a pooler, a declarative database and daily backups. The rest
+# of the file is what the panel's lookups see.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-main
+  namespace: db
+  uid: 11111111-0000-0000-0000-000000000001
+  creationTimestamp: "2025-06-01T00:00:00Z"
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.1-system-trixie
+  primaryUpdateMethod: switchover
+  primaryUpdateStrategy: unsupervised
+  enablePDB: true
+  affinity:
+    podAntiAffinityType: preferred
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: 256MB
+    synchronous:
+      method: any
+      number: 1
+  replicationSlots:
+    highAvailability:
+      enabled: true
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      enabled: true
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: pg-main-store
+  storage:
+    size: 20Gi
+    storageClass: fast-ssd
+status:
+  phase: Cluster in healthy state
+  instances: 3
+  readyInstances: 3
+  currentPrimary: pg-main-1
+  currentPrimaryTimestamp: "2025-12-20T10:00:00Z"
+  targetPrimary: pg-main-1
+  timelineID: 2
+  image: ghcr.io/cloudnative-pg/postgresql:18.1-system-trixie
+  pgDataImageInfo:
+    image: ghcr.io/cloudnative-pg/postgresql:18.1-system-trixie
+    majorVersion: 18
+  instanceNames: [pg-main-1, pg-main-2, pg-main-3]
+  instancesStatus:
+    healthy: [pg-main-1, pg-main-2, pg-main-3]
+  instancesReportedState:
+    pg-main-1: {isPrimary: true, timeLineID: 2}
+    pg-main-2: {isPrimary: false, timeLineID: 2}
+    pg-main-3: {isPrimary: false, timeLineID: 2}
+  writeService: pg-main-rw
+  readService: pg-main-r
+  systemID: "7400000000000000001"
+  topology:
+    nodesUsed: 3
+  lastFailedBackup: "2025-12-01T00:00:30Z"
+  pluginStatus:
+    - name: barman-cloud.cloudnative-pg.io
+      version: 0.15.1
+  certificates:
+    serverTLSSecret: pg-main-server
+    serverCASecret: pg-main-ca
+    clientCASecret: pg-main-ca
+    replicationTLSSecret: pg-main-replication
+    expirations:
+      pg-main-ca: 2026-03-01 10:00:00 +0000 UTC
+      pg-main-replication: 2026-03-01 10:00:00 +0000 UTC
+      pg-main-server: 2026-03-01 10:00:00 +0000 UTC
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ClusterIsReady
+      message: Cluster is Ready
+      lastTransitionTime: "2025-12-20T10:01:00Z"
+    - type: ContinuousArchiving
+      status: "True"
+      reason: ContinuousArchivingSuccess
+      message: Continuous archiving is working
+      lastTransitionTime: "2025-12-20T10:01:00Z"
+    - type: LastBackupSucceeded
+      status: "True"
+      reason: LastBackupSucceeded
+      message: Backup was successful
+      lastTransitionTime: "2025-12-31T00:01:10Z"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-main-1
+  namespace: db
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/instanceName: pg-main-1, cnpg.io/instanceRole: primary, cnpg.io/podRole: instance}
+spec:
+  nodeName: node-a
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: postgres, ready: true, restartCount: 0}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-main-2
+  namespace: db
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/instanceName: pg-main-2, cnpg.io/instanceRole: replica, cnpg.io/podRole: instance}
+spec:
+  nodeName: node-b
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: postgres, ready: true, restartCount: 1}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-main-3
+  namespace: db
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/instanceName: pg-main-3, cnpg.io/instanceRole: replica, cnpg.io/podRole: instance}
+spec:
+  nodeName: node-c
+status:
+  phase: Running
+  conditions: [{type: Ready, status: "True"}]
+  containerStatuses: [{name: postgres, ready: true, restartCount: 0}]
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pg-main-store
+  namespace: db
+spec:
+  retentionPolicy: 30d
+  configuration:
+    destinationPath: s3://backups/pg-main
+status:
+  serverRecoveryWindow:
+    pg-main:
+      firstRecoverabilityPoint: "2025-12-01T00:00:40Z"
+      lastSuccessfulBackupTime: "2025-12-31T00:01:05Z"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: pg-main-daily
+  namespace: db
+spec:
+  cluster: {name: pg-main}
+  schedule: "0 0 0 * * *"
+  method: plugin
+  pluginConfiguration: {name: barman-cloud.cloudnative-pg.io}
+  backupOwnerReference: self
+status:
+  lastScheduleTime: "2025-12-31T00:00:00Z"
+  nextScheduleTime: "2026-01-01T00:00:00Z"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: pg-main-daily-20251231000000
+  namespace: db
+  creationTimestamp: "2025-12-31T00:00:00Z"
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/scheduled-backup: pg-main-daily}
+spec:
+  cluster: {name: pg-main}
+  method: plugin
+  pluginConfiguration: {name: barman-cloud.cloudnative-pg.io}
+status:
+  phase: completed
+  method: plugin
+  startedAt: "2025-12-31T00:00:05Z"
+  stoppedAt: "2025-12-31T00:01:05Z"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: pg-main-daily-20251201000000
+  namespace: db
+  creationTimestamp: "2025-12-01T00:00:00Z"
+  labels: {cnpg.io/cluster: pg-main, cnpg.io/scheduled-backup: pg-main-daily}
+spec:
+  cluster: {name: pg-main}
+  method: plugin
+  pluginConfiguration: {name: barman-cloud.cloudnative-pg.io}
+status:
+  phase: failed
+  method: plugin
+  error: "requested plugin is not available: barman-cloud.cloudnative-pg.io"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: pg-main-pooler-rw
+  namespace: db
+spec:
+  cluster: {name: pg-main}
+  instances: 2
+  type: rw
+  pgbouncer:
+    poolMode: transaction
+status:
+  instances: 2
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: pg-main-app
+  namespace: db
+spec:
+  cluster: {name: pg-main}
+  name: app
+  owner: app
+status:
+  applied: true

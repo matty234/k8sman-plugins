@@ -1,0 +1,18 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: pg-main-reports
+  namespace: db
+spec:
+  cluster: {name: pg-main}
+  name: reports
+  owner: reporter
+  ensure: present
+  extensions:
+    - name: pg_stat_statements
+  schemas:
+    - name: staging
+      owner: reporter
+status:
+  applied: false
+  message: 'while creating database "reports": role "reporter" does not exist'
