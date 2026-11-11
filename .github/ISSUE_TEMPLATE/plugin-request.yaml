@@ -1,0 +1,36 @@
+name: Plugin request
+description: Ask for a plugin for an operator or project
+title: "Plugin request: "
+labels: [plugin-request]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tell us which operator or project you'd like k8sman to understand. Plugins add columns, inspector sections, actions and alerts for its kinds.
+  - type: input
+    id: project
+    attributes:
+      label: Operator or project
+      placeholder: e.g. Argo CD
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Link to its docs or repo
+      placeholder: https://
+    validations:
+      required: true
+  - type: textarea
+    id: wanted
+    attributes:
+      label: What would you like to see in k8sman?
+      description: Which resources, and what views, columns, alerts or actions would help.
+    validations:
+      required: true
+  - type: checkboxes
+    id: author
+    attributes:
+      label: Writing it
+      options:
+        - label: I'd be interested in writing this plugin myself

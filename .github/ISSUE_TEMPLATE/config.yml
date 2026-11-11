@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Write a plugin
+    url: https://github.com/matty234/k8sman/blob/main/docs/PLUGINS.md
+    about: The guide to writing k8sman plugins, then open a pull request here.
