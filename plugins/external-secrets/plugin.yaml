@@ -9,7 +9,7 @@
 apiVersion: k8sman.dev/v1
 id: external-secrets
 name: External Secrets
-version: 1.1.0
+version: 1.2.0
 description: ExternalSecrets, secret stores and PushSecrets (External Secrets Operator), with sync status and a refresh action.
 authors: [k8sman]
 homepage: https://external-secrets.io
@@ -285,6 +285,47 @@ kinds:
         - label: not synced
           severity: warning
           when: variables.notSynced
+    templates:
+      - name: ExternalSecret (selected keys)
+        description: A Secret with keys picked from remote secrets
+        yaml: |
+          apiVersion: external-secrets.io/v1
+          kind: ExternalSecret
+          metadata:
+            name: ${name:app-secrets}
+            namespace: ${namespace}
+          spec:
+            refreshInterval: 1h
+            secretStoreRef:
+              kind: ${storeKind:SecretStore}
+              name: ${store:aws-secrets-manager}
+            target:
+              name: ${name:app-secrets}
+              creationPolicy: Owner
+            data:
+              - secretKey: ${secretKey:password}
+                remoteRef:
+                  key: ${remoteKey:app/database}
+                  property: ${property:password}
+      - name: ExternalSecret (whole remote secret)
+        description: A Secret with every property of one remote secret
+        yaml: |
+          apiVersion: external-secrets.io/v1
+          kind: ExternalSecret
+          metadata:
+            name: ${name:app-config}
+            namespace: ${namespace}
+          spec:
+            refreshInterval: 1h
+            secretStoreRef:
+              kind: ${storeKind:SecretStore}
+              name: ${store:aws-secrets-manager}
+            target:
+              name: ${name:app-config}
+              creationPolicy: Owner
+            dataFrom:
+              - extract:
+                  key: ${remoteKey:app/config}
 
   external-secrets.io/ClusterExternalSecret:
     icon: vpn_key
@@ -460,6 +501,44 @@ kinds:
                   severity: >-
                     !condition(item, "Ready").hasValue() ? "neutral" :
                     conditionTrue(item, "Ready") ? "ok" : "error"
+    templates:
+      - name: AWS Secrets Manager (IRSA)
+        description: Reads AWS Secrets Manager as a service account with an IAM role
+        yaml: |
+          apiVersion: external-secrets.io/v1
+          kind: SecretStore
+          metadata:
+            name: ${name:aws-secrets-manager}
+            namespace: ${namespace}
+          spec:
+            provider:
+              aws:
+                service: SecretsManager
+                region: ${region:eu-west-1}
+                auth:
+                  jwt:
+                    serviceAccountRef:
+                      name: ${serviceAccount:external-secrets}
+      - name: HashiCorp Vault (Kubernetes auth)
+        description: Reads a Vault KV v2 engine, logging in with a service account token
+        yaml: |
+          apiVersion: external-secrets.io/v1
+          kind: SecretStore
+          metadata:
+            name: ${name:vault}
+            namespace: ${namespace}
+          spec:
+            provider:
+              vault:
+                server: ${server:https://vault.example.com:8200}
+                path: ${path:secret}
+                version: v2
+                auth:
+                  kubernetes:
+                    mountPath: ${mountPath:kubernetes}
+                    role: ${role:app}
+                    serviceAccountRef:
+                      name: ${serviceAccount:default}
   external-secrets.io/ClusterSecretStore:
     icon: dns
     variables: *storeVariables
@@ -467,6 +546,57 @@ kinds:
     hideColumns: *storeHide
     columns: *storeColumns
     panel: *storePanel
+    templates:
+      - name: AWS Secrets Manager (access key)
+        description: Reads AWS Secrets Manager with an access key, for every namespace, plus the key's Secret
+        yaml: |
+          apiVersion: external-secrets.io/v1
+          kind: ClusterSecretStore
+          metadata:
+            name: ${name:aws-secrets-manager}
+          spec:
+            provider:
+              aws:
+                service: SecretsManager
+                region: ${region:eu-west-1}
+                auth:
+                  secretRef:
+                    accessKeyIDSecretRef:
+                      name: ${credentialsSecret:aws-credentials}
+                      namespace: ${credentialsNamespace:external-secrets}
+                      key: access-key-id
+                    secretAccessKeySecretRef:
+                      name: ${credentialsSecret:aws-credentials}
+                      namespace: ${credentialsNamespace:external-secrets}
+                      key: secret-access-key
+          ---
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: ${credentialsSecret:aws-credentials}
+            namespace: ${credentialsNamespace:external-secrets}
+          type: Opaque
+          stringData:
+            access-key-id: ${accessKeyId}
+            secret-access-key: ${secretAccessKey}
+      - name: Google Secret Manager (Workload Identity)
+        description: Reads Google Secret Manager as a GKE service account, for every namespace
+        yaml: |
+          apiVersion: external-secrets.io/v1
+          kind: ClusterSecretStore
+          metadata:
+            name: ${name:gcp-secret-manager}
+          spec:
+            provider:
+              gcpsm:
+                projectID: ${project:my-project}
+                auth:
+                  workloadIdentity:
+                    clusterLocation: ${location:europe-west1}
+                    clusterName: ${cluster:my-cluster}
+                    serviceAccountRef:
+                      name: ${serviceAccount:external-secrets}
+                      namespace: ${serviceAccountNamespace:external-secrets}
 
   external-secrets.io/PushSecret:
     icon: upload

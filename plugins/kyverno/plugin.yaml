@@ -12,7 +12,7 @@
 apiVersion: k8sman.dev/v1
 id: kyverno
 name: Kyverno
-version: 1.1.0
+version: 1.2.0
 description: Policies, exceptions and policy reports (kyverno.io, wgpolicyk8s.io), with policy results on any object.
 authors: [k8sman]
 homepage: https://kyverno.io
@@ -238,6 +238,54 @@ kinds:
           label: not ready
           severity: warning
           when: variables.ready == "False"
+    templates:
+      - name: Validate (require a label)
+        description: Reports, or with Enforce blocks, Pods without an app.kubernetes.io/name label
+        yaml: |
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: ${name:require-app-label}
+            annotations:
+              policies.kyverno.io/title: Require app label
+              policies.kyverno.io/description: Pods need an app.kubernetes.io/name label.
+          spec:
+            background: true
+            rules:
+              - name: check-app-label
+                match:
+                  any:
+                    - resources:
+                        kinds:
+                          - Pod
+                validate:
+                  failureAction: ${failureAction:Audit}
+                  message: The label app.kubernetes.io/name is required.
+                  pattern:
+                    metadata:
+                      labels:
+                        app.kubernetes.io/name: "?*"
+      - name: Mutate (add a default label)
+        description: Adds a team label to Pods and Deployments that don't have one
+        yaml: |
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: ${name:add-team-label}
+          spec:
+            rules:
+              - name: add-team-label
+                match:
+                  any:
+                    - resources:
+                        kinds:
+                          - Pod
+                          - Deployment
+                mutate:
+                  patchStrategicMerge:
+                    metadata:
+                      labels:
+                        +(team): ${team:platform}
 
   kyverno.io/Policy:
     icon: policy

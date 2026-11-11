@@ -11,7 +11,7 @@
 apiVersion: k8sman.dev/v1
 id: cert-manager
 name: cert-manager
-version: 1.2.0
+version: 1.3.0
 description: Expiry, issuer and readiness columns, certificate panels, expiry alerts, renewal settings and Renew (cmctl) for cert-manager.
 authors: [k8sman]
 homepage: https://cert-manager.io
@@ -288,6 +288,25 @@ kinds:
         - label: not ready
           severity: warning
           when: condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")
+    templates:
+      - name: Certificate
+        description: A TLS certificate for one DNS name
+        yaml: |
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: ${name:app-tls}
+            namespace: ${namespace}
+          spec:
+            secretName: ${name:app-tls}
+            dnsNames:
+              - ${dnsName:app.example.com}
+            issuerRef:
+              group: cert-manager.io
+              kind: ${issuerKind:ClusterIssuer}
+              name: ${issuer:letsencrypt-http}
+            privateKey:
+              rotationPolicy: Always
 
   cert-manager.io/CertificateRequest:
     icon: receipt
@@ -316,9 +335,9 @@ kinds:
               empty: No owner.
             - type: conditions
 
-  cert-manager.io/Issuer: &issuer
+  cert-manager.io/Issuer:
     icon: policy
-    columns:
+    columns: &issuerColumns
       - name: Type
         value: >-
           has(object.spec.acme) ? "ACME" : has(object.spec.ca) ? "CA" :
@@ -326,7 +345,7 @@ kinds:
           has(object.spec.selfSigned) ? "SelfSigned" : "Other"
       - name: Server
         value: object.spec.?acme.?server
-    panel:
+    panel: &issuerPanel
       # The full spec (solvers, auth) stays below, collapsed.
       generic: collapse
       sections:
@@ -359,11 +378,101 @@ kinds:
                 - name: Selector
                   value: 'item.?selector.?dnsZones.orValue([]).join(", ")'
             - type: conditions
-    alerts:
+    alerts: &issuerAlerts
       - id: issuer-not-ready
         label: Issuers not ready
         severity: warning
         when: condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")
         message: condition(object, "Ready").?message.orValue("Not ready")
         since: condition(object, "Ready").?lastTransitionTime.orValue(object.metadata.creationTimestamp)
-  cert-manager.io/ClusterIssuer: *issuer
+  cert-manager.io/ClusterIssuer:
+    icon: policy
+    columns: *issuerColumns
+    panel: *issuerPanel
+    alerts: *issuerAlerts
+    templates:
+      - name: Let's Encrypt (HTTP-01)
+        description: ACME issuer that solves challenges through an ingress
+        yaml: |
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: ${name:letsencrypt-http}
+          spec:
+            acme:
+              # Try https://acme-staging-v02.api.letsencrypt.org/directory first.
+              server: ${server:https://acme-v02.api.letsencrypt.org/directory}
+              email: ${email}
+              privateKeySecretRef:
+                name: ${name:letsencrypt-http}-account-key
+              solvers:
+                - http01:
+                    ingress:
+                      ingressClassName: ${ingressClass:nginx}
+      - name: Let's Encrypt (DNS-01, Cloudflare)
+        description: ACME issuer that solves challenges with DNS records, plus its API token Secret
+        yaml: |
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: ${name:letsencrypt-dns}
+          spec:
+            acme:
+              server: ${server:https://acme-v02.api.letsencrypt.org/directory}
+              email: ${email}
+              privateKeySecretRef:
+                name: ${name:letsencrypt-dns}-account-key
+              solvers:
+                - dns01:
+                    cloudflare:
+                      apiTokenSecretRef:
+                        name: ${tokenSecret:cloudflare-api-token}
+                        key: api-token
+                  selector:
+                    dnsZones:
+                      - ${zone:example.com}
+          ---
+          # ClusterIssuers read Secrets from cert-manager's own namespace.
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: ${tokenSecret:cloudflare-api-token}
+            namespace: ${certManagerNamespace:cert-manager}
+          type: Opaque
+          stringData:
+            api-token: ${apiToken}
+      - name: Self-signed CA
+        description: A self-signed issuer, a CA certificate from it, and a CA issuer that signs with it
+        yaml: |
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: ${bootstrapIssuer:selfsigned}
+          spec:
+            selfSigned: {}
+          ---
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: ${caName:internal-ca}
+            namespace: ${certManagerNamespace:cert-manager}
+          spec:
+            isCA: true
+            commonName: ${caCommonName:Internal CA}
+            secretName: ${caName:internal-ca}
+            duration: 87600h   # 10 years
+            privateKey:
+              algorithm: ECDSA
+              size: 256
+            issuerRef:
+              group: cert-manager.io
+              kind: ClusterIssuer
+              name: ${bootstrapIssuer:selfsigned}
+          ---
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: ${caIssuer:internal-ca}
+          spec:
+            ca:
+              secretName: ${caName:internal-ca}

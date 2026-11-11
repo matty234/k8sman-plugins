@@ -7,11 +7,11 @@
 apiVersion: k8sman.dev/v1
 id: flux
 name: Flux
-version: 1.0.0
+version: 1.1.0
 description: Ready state, revision and suspended badges for Flux Kustomizations, sources and HelmReleases, with alerts for reconciliations that are failing.
 authors: [k8sman community]
 homepage: https://fluxcd.io
-minAppVersion: "0.2.15"
+minAppVersion: "0.2.17"
 
 permissions:
   read:
@@ -101,6 +101,25 @@ kinds:
         - label: not ready
           severity: error
           when: '!object.spec.?suspend.orValue(false) && condition(object, "Ready").hasValue() && !conditionTrue(object, "Ready")'
+    templates:
+      - name: Kustomization
+        description: Apply a folder of an existing GitRepository
+        yaml: |
+          apiVersion: kustomize.toolkit.fluxcd.io/v1
+          kind: Kustomization
+          metadata:
+            name: ${name:app}
+            namespace: ${namespace}
+          spec:
+            interval: 10m
+            sourceRef:
+              kind: GitRepository
+              name: ${source:flux-system}
+            path: ${path:./deploy}
+            targetNamespace: ${targetNamespace:app}
+            prune: true
+            wait: true
+            timeout: 5m
 
   helm.toolkit.fluxcd.io/HelmRelease:
     icon: rocket_launch
@@ -144,6 +163,26 @@ kinds:
             - type: conditions
     alerts: *alerts
     status: *status
+    templates:
+      - name: HelmRelease
+        description: A release of a chart from an existing HelmRepository
+        yaml: |
+          apiVersion: helm.toolkit.fluxcd.io/v2
+          kind: HelmRelease
+          metadata:
+            name: ${name:app}
+            namespace: ${namespace}
+          spec:
+            interval: 10m
+            chart:
+              spec:
+                chart: ${chart:app}
+                version: ${version:1.x}
+                sourceRef:
+                  kind: HelmRepository
+                  name: ${repository:charts}
+                interval: 1h
+            values: {}
 
   source.toolkit.fluxcd.io/GitRepository:
     icon: code
@@ -189,6 +228,39 @@ kinds:
             - type: conditions
     alerts: *alerts
     status: *status
+    templates:
+      - name: GitRepository + Kustomization
+        description: Fetch a Git repository and apply one of its folders
+        yaml: |
+          apiVersion: source.toolkit.fluxcd.io/v1
+          kind: GitRepository
+          metadata:
+            name: ${name:app}
+            namespace: ${namespace}
+          spec:
+            interval: 5m
+            url: ${url:https://git.example.com/org/app.git}
+            ref:
+              branch: ${branch:main}
+            # Private repository: a Secret with username/password or identity/known_hosts.
+            # secretRef:
+            #   name: app-git-auth
+          ---
+          apiVersion: kustomize.toolkit.fluxcd.io/v1
+          kind: Kustomization
+          metadata:
+            name: ${name:app}
+            namespace: ${namespace}
+          spec:
+            interval: 10m
+            sourceRef:
+              kind: GitRepository
+              name: ${name:app}
+            path: ${path:./deploy}
+            targetNamespace: ${targetNamespace:app}
+            prune: true
+            wait: true
+            timeout: 5m
 
   source.toolkit.fluxcd.io/HelmRepository:
     icon: inventory
@@ -231,3 +303,38 @@ kinds:
             - type: conditions
     alerts: *alerts
     status: *status
+    templates:
+      - name: HelmRepository + HelmRelease
+        description: A chart repository and a release of one of its charts
+        yaml: |
+          apiVersion: source.toolkit.fluxcd.io/v1
+          kind: HelmRepository
+          metadata:
+            name: ${repository:charts}
+            namespace: ${namespace}
+          spec:
+            interval: 1h
+            url: ${url:https://charts.example.com}
+          ---
+          apiVersion: helm.toolkit.fluxcd.io/v2
+          kind: HelmRelease
+          metadata:
+            name: ${name:app}
+            namespace: ${namespace}
+          spec:
+            interval: 10m
+            chart:
+              spec:
+                chart: ${chart:app}
+                version: ${version:1.x}
+                sourceRef:
+                  kind: HelmRepository
+                  name: ${repository:charts}
+                interval: 1h
+            install:
+              remediation:
+                retries: 3
+            upgrade:
+              remediation:
+                retries: 3
+            values: {}

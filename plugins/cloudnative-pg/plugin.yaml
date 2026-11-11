@@ -11,11 +11,11 @@
 apiVersion: k8sman.dev/v1
 id: cloudnative-pg
 name: CloudNativePG
-version: 1.0.0
+version: 1.1.0
 description: PostgreSQL clusters run by CloudNativePG, with instances, replication, backups, WAL archiving, certificates and poolers, and alerts for unhealthy clusters and failing backups.
 authors: [k8sman community]
 homepage: https://cloudnative-pg.io
-minAppVersion: "0.2.15"
+minAppVersion: "0.2.17"
 
 permissions:
   read:
@@ -618,6 +618,76 @@ kinds:
         - label: backup failed or overdue
           severity: warning
           when: variables.backupFailed || variables.backupStale
+    templates:
+      - name: Cluster (3 instances)
+        description: A primary and two replicas with an application database
+        yaml: |
+          apiVersion: postgresql.cnpg.io/v1
+          kind: Cluster
+          metadata:
+            name: ${name:pg-main}
+            namespace: ${namespace}
+          spec:
+            instances: 3
+            storage:
+              size: ${storageSize:10Gi}
+            bootstrap:
+              initdb:
+                database: ${database:app}
+                owner: ${owner:app}
+      - name: Cluster with Barman Cloud backups
+        description: WAL archiving and base backups to S3-compatible storage through the Barman Cloud plugin's ObjectStore, plus its credentials Secret
+        yaml: |
+          apiVersion: postgresql.cnpg.io/v1
+          kind: Cluster
+          metadata:
+            name: ${name:pg-main}
+            namespace: ${namespace}
+          spec:
+            instances: 3
+            storage:
+              size: ${storageSize:10Gi}
+            bootstrap:
+              initdb:
+                database: ${database:app}
+                owner: ${owner:app}
+            plugins:
+              - name: barman-cloud.cloudnative-pg.io
+                isWALArchiver: true
+                parameters:
+                  barmanObjectName: ${objectStore:pg-main-backups}
+          ---
+          apiVersion: barmancloud.cnpg.io/v1
+          kind: ObjectStore
+          metadata:
+            name: ${objectStore:pg-main-backups}
+            namespace: ${namespace}
+          spec:
+            retentionPolicy: ${retention:30d}
+            configuration:
+              destinationPath: s3://${bucket:pg-backups}/${name:pg-main}
+              endpointURL: ${s3Endpoint:https://s3.example.com}
+              s3Credentials:
+                accessKeyId:
+                  name: ${credentialsSecret:pg-main-backup-s3}
+                  key: ACCESS_KEY_ID
+                secretAccessKey:
+                  name: ${credentialsSecret:pg-main-backup-s3}
+                  key: ACCESS_SECRET_KEY
+              wal:
+                compression: gzip
+              data:
+                compression: gzip
+          ---
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: ${credentialsSecret:pg-main-backup-s3}
+            namespace: ${namespace}
+          type: Opaque
+          stringData:
+            ACCESS_KEY_ID: ${accessKeyId}
+            ACCESS_SECRET_KEY: ${secretAccessKey}
 
   postgresql.cnpg.io/Backup:
     icon: backup
@@ -811,6 +881,25 @@ kinds:
                 - name: Error
                   detail: true
                   value: item.?status.?error.orValue("")
+    templates:
+      - name: Daily backup (Barman Cloud)
+        description: A base backup every night through the Barman Cloud plugin
+        yaml: |
+          apiVersion: postgresql.cnpg.io/v1
+          kind: ScheduledBackup
+          metadata:
+            name: ${name:pg-main-daily}
+            namespace: ${namespace}
+          spec:
+            # Six fields, seconds first: 02:00 every day.
+            schedule: ${schedule:0 0 2 * * *}
+            immediate: true
+            backupOwnerReference: self
+            cluster:
+              name: ${cluster:pg-main}
+            method: plugin
+            pluginConfiguration:
+              name: barman-cloud.cloudnative-pg.io
 
   postgresql.cnpg.io/Pooler:
     icon: hub
@@ -892,6 +981,25 @@ kinds:
           blocks:
             - type: settings
               value: object.spec.pgbouncer.parameters
+    templates:
+      - name: PgBouncer pooler (read-write)
+        description: Two PgBouncer pods in front of the cluster's primary
+        yaml: |
+          apiVersion: postgresql.cnpg.io/v1
+          kind: Pooler
+          metadata:
+            name: ${name:pg-main-pooler-rw}
+            namespace: ${namespace}
+          spec:
+            cluster:
+              name: ${cluster:pg-main}
+            instances: 2
+            type: ${type:rw}
+            pgbouncer:
+              poolMode: ${poolMode:session}
+              parameters:
+                max_client_conn: "1000"
+                default_pool_size: "10"
 
   postgresql.cnpg.io/Database:
     icon: storage
