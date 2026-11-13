@@ -9,7 +9,7 @@
 apiVersion: k8sman.dev/v1
 id: kubevirt
 name: KubeVirt
-version: 0.1.0
+version: 0.1.1
 description: Virtual machines on Kubernetes. Status, disks, networks, instances, migrations, DataVolumes, snapshots and instance types, with power, migration and snapshot actions, templates and alerts.
 authors: [k8sman community]
 homepage: https://kubevirt.io
@@ -609,7 +609,7 @@ kinds:
       - name: Node
         value: object.?status.?nodeName
       - name: IP
-        value: 'object.?status.?interfaces.orValue([]).map(i, i.?ipAddress.orValue("")).join("")'
+        value: 'object.?status.?interfaces.orValue([]).map(i, i.?ipAddress.orValue("")).filter(ip, ip != "").join(", ")'
         description: The first interface's address
       - name: Ready
         type: bool
